@@ -13,7 +13,7 @@
  * - 不把原文/译文写进会话或日志；
  * - 密钥只从环境变量或 ~/.dsh/.credentials.yaml 运行期解析。
  */
-import type { TranslateRequest, TranslateResponse } from './shared.ts'
+import type { TranslateRequest, TranslateResponse } from './shared'
 
 export const name = 'dsh-cot-translate'
 

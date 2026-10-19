@@ -12,7 +12,7 @@
  *
  * 兼容基线：DSH 0.2.0-rc.2 + cordis 4.0.4。
  */
-import { LOCALES } from './locales.ts'
+import { LOCALES } from './locales'
 
 export const name = 'dsh-cot-translate'
 
