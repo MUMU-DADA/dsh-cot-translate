@@ -1,0 +1,7 @@
+# 作为 bundle 安装时（package.json 的 dsh.bundle.patch）由 profile composer 应用：
+# 在 profile 的 cordis 树里挂载本插件的 host 半。
+# 浏览器侧据此发现 dsh.client 声明，并把 lib/client.js 作为
+# /plugins/dsh-cot-translate/client.js 提供给页面加载。
+- insert:
+    - id: dsh-cot-translate
+      name: dsh-cot-translate

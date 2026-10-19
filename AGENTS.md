@@ -1,0 +1,30 @@
+# 项目约定（给 AI / 协作者）
+
+## 先读什么
+
+1. `docs/DECISIONS.md` —— 已定事项，不要重复讨论；要改决策先改它，再改代码
+2. `docs/RESEARCH.md` —— 已经查过的事实，避免重复调研
+3. `docs/ROADMAP.md` —— 当前里程碑与验收标准
+
+## 红线
+
+- **只做显示层**：不把译文写回会话、不修改 reasoning 原文、不影响模型上下文
+- **不默认翻译代码**：代码块、行内代码、路径、命令、URL、标识符必须在送翻前剔除，翻完原样还原
+- **不落密钥**：provider key 只能从环境变量或 `~/.dsh/.credentials.yaml` 运行期解析，绝不写入插件配置
+- **不引入原生依赖**：纯 JS/TS + 标准 Node API，避免 node-pty 这类带预编译产物的包
+- **兼容基线是 DSH 0.2.0-rc.2 + cordis 4.0.4**：要用更高版本才有的 API，先在 DECISIONS 里记录并给出降级方案
+
+## 开发命令
+
+```powershell
+npm run build      # host ESM + client bundle
+npm run typecheck
+npm test
+```
+
+## 兼容性提醒
+
+- client bundle 必须保持 `window.__ModuleLoader__.load({ id: "<package name>", factory })` 包装，id 必须等于包名
+- React / react-dom 走 shell 的 PLATFORM_MODULES，不要打进 bundle
+- 改完 profile 里的包之后必须**完整重启 DSH Desktop**（HMR 不监听 node_modules）
+- 页面刷新可能会引用旧 client 资源，升级后以重启为准
