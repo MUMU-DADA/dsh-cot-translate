@@ -46,6 +46,8 @@ dsh plugin --profile web add <本仓库路径>
 # 安装后请完整重启 DSH Desktop（HMR 热更新不监听 node_modules）
 ```
 
+发布包：从 [GitHub Releases](https://github.com/MUMU-DADA/dsh-cot-translate/releases) 下载 `dsh-cot-translate-0.1.0.tgz`，执行 `dsh plugin --profile web add <下载的tgz路径>`。发布包已含构建产物，不含模型权重和 llama.cpp；请另行下载。若从源码安装，先在仓库根目录执行 `npm ci`（自动构建），再执行上面的安装命令。
+
 卸载插件：
 
 ```powershell

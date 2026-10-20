@@ -45,6 +45,8 @@ dsh plugin --profile web add <このリポジトリのパス>
 # インストール後は DSH Desktop を完全に再起動してください（HMR は node_modules を監視しません）
 ```
 
+リリース版： [GitHub Releases](https://github.com/MUMU-DADA/dsh-cot-translate/releases) から `dsh-cot-translate-0.1.0.tgz` をダウンロードし、`dsh plugin --profile web add <ダウンロードしたtgzのパス>` を実行してください。ビルド済みコードを含みますが、モデルの重みと llama.cpp は別途ダウンロードが必要です。ソースからインストールする場合は、先にリポジトリのルートで `npm ci` を実行すると自動ビルドされます。
+
 アンインストール：
 
 ```powershell

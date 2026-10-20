@@ -47,6 +47,8 @@ dsh plugin --profile web add <path-to-this-repo>
 # Restart DSH Desktop completely after installation (HMR does not watch node_modules)
 ```
 
+Release package: download `dsh-cot-translate-0.1.0.tgz` from [GitHub Releases](https://github.com/MUMU-DADA/dsh-cot-translate/releases), then run `dsh plugin --profile web add <path-to-downloaded-tgz>`. The package includes compiled code, but no model weights or llama.cpp binaries. For a source checkout, first run `npm ci` in the repository root (builds automatically), then install using the command above.
+
 To uninstall:
 
 ```powershell
@@ -56,7 +58,7 @@ dsh plugin --profile web remove dsh-cot-translate
 
 ### 2. Set Up Local Model Acceleration (Recommended)
 
-Local inference runs headlessly via `llama.cpp`'s `llama-server` — **no installer, no system tray app, and no background service when idle**.
+Local inference runs headlessly via `llama.cpp`'s `llama-server` — **no installer, no system tray app, and no manual server startup**.
 
 1. Download the official `llama.cpp` release archive (e.g., the Windows Vulkan build `llama-*-bin-win-vulkan-x64.zip`, ~35 MB) from [ggml-org/llama.cpp Releases](https://github.com/ggml-org/llama.cpp/releases) and extract it to:
    - Windows: `%USERPROFILE%\tools\llama.cpp\`
