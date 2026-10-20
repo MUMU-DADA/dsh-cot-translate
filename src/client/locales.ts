@@ -53,6 +53,13 @@ const zh: NamespaceDictionary = {
   'set.selftestResult': '平均 {ms} ms/段 · {api}',
   'set.selftestFailed': '测试失败',
   'set.chain': '当前翻译来源',
+
+  // ── 设置页：翻译缓存 ──────────────────────────────────────
+  'set.cache': '翻译缓存',
+  'set.cacheHint': '译文缓存在本地（只存译文，原文不落盘），重启后已翻过的内容直接命中。上限 {limit}，超出后自动清理最旧的。',
+  'set.cacheUsage': '{used} / {limit} · {entries} 条',
+  'set.cacheClear': '清理缓存',
+  'set.cacheCleared': '已清理',
 }
 
 const en: NamespaceDictionary = {
@@ -104,6 +111,14 @@ const en: NamespaceDictionary = {
   'set.selftestResult': '{ms} ms/segment average · {api}',
   'set.selftestFailed': 'Test failed',
   'set.chain': 'Current providers',
+
+  // ── settings: translation cache ───────────────────────────
+  'set.cache': 'Translation cache',
+  'set.cacheHint':
+    'Translations are cached locally (translations only — source text is never written to disk). Restarts reuse them. Cap {limit}; the oldest entries are evicted automatically.',
+  'set.cacheUsage': '{used} / {limit} · {entries} entries',
+  'set.cacheClear': 'Clear cache',
+  'set.cacheCleared': 'Cleared',
 }
 
 /** 交给 `ctx.locale.register(namespace, LOCALES)` 的字典表。 */

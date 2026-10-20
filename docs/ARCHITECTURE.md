@@ -65,8 +65,10 @@
   - `llamacpp.{baseURL,bin,modelPath,gpuLayers,ctxSize,autostart,enabled}`
   - `ollama.{baseURL,model,keepAlive,autostart,bin,enabled}`（可选）、`google.{endpoint,enabled}`
   - 写错的值一律回退默认，插件不会因配置语法挂不上
-- **缓存**
-  - LRU ≈ 600 条：`hash(target + text) → translation`（进程内，不落盘）
+- **缓存**（三层：磁盘 → 内存 → provider）
+  - 磁盘：`~/.dsh/cot-translate/cache/`，键 `sha256(target+原文)`，文件只存译文；
+    上限 50MB，超限按 mtime 淘汰最旧；启动扫目录建索引（ADR-019）
+  - 内存 LRU ≈ 600 条：`target + 原文 → translation`
   - 失败负缓存 30 秒（避免重试风暴）
 - **失败语义**：逐个 provider 尝试；单个失败降级；全失败 → `translations` 全空串，
   由 client 端显示原文（fail-open），并暴露 `provider: ""` 便于 UI 提示。

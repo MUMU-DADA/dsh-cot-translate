@@ -103,6 +103,7 @@ export function apply(ctx: ClientContext): void {
 export { attachBilingual } from './attach'
 export { createBilingualPanel } from './bilingual'
 export { collectReasoning, reasoningCharCount, singleLinePreview } from './chat'
+export { LOCALES, fallbackTranslate } from './locales'
 export { DEFAULT_PREFS, loadPrefs, onPrefs, prefs, setPrefs } from './prefs'
 export { SettingsSection } from './settings-view'
 export {

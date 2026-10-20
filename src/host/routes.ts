@@ -25,6 +25,8 @@ export const MODEL_DOWNLOAD_PATH = '/_cotx/models/download'
 export const MODEL_DELETE_PATH = '/_cotx/models/delete'
 export const SELFTEST_PATH = '/_cotx/selftest'
 export const RESTART_PATH = '/_cotx/restart'
+export const CACHE_PATH = '/_cotx/cache'
+export const CACHE_CLEAR_PATH = '/_cotx/cache/clear'
 
 /** 思考片段是自然语言，64KB 已远超正常批量；超过即视为异常输入。 */
 const MAX_BODY_BYTES = 64 * 1024
@@ -325,6 +327,22 @@ export function registerRoutes(options: RouteOptions): Array<() => void> {
       return
     }
     sendJson(res, 200, control.restart())
+  })
+
+  exact(CACHE_PATH, async (req, res) => {
+    if (req.method !== 'GET') {
+      sendMethodNotAllowed(res, 'GET')
+      return
+    }
+    sendJson(res, 200, control.state().cache)
+  })
+
+  exact(CACHE_CLEAR_PATH, async (req, res) => {
+    if (req.method !== 'POST') {
+      sendMethodNotAllowed(res, 'POST')
+      return
+    }
+    sendJson(res, 200, control.clearCache())
   })
 
   return disposers

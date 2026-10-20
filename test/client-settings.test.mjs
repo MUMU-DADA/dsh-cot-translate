@@ -49,6 +49,12 @@ const STATE = {
   enabled: true,
   target: 'zh-Hans',
   bundledReady: true,
+  cache: {
+    entries: 12,
+    bytes: 3 * 1024 * 1024,
+    limitBytes: 50 * 1024 * 1024,
+    dir: 'C:/tmp/cache',
+  },
 }
 
 test('设置页：挂载后渲染开关、时机与模型列表', async () => {
@@ -91,7 +97,7 @@ test('设置页：挂载后渲染开关、时机与模型列表', async () => {
     const { createRoot } = REQUIRE('react-dom/client')
     const container = dom.window.document.getElementById('root')
     const root = createRoot(container)
-    root.render(React.createElement(client.SettingsSection, { t: (key) => key }))
+    root.render(React.createElement(client.SettingsSection, { t: client.fallbackTranslate }))
 
     for (let attempt = 0; attempt < 40; attempt += 1) {
       await new Promise((resolve) => setTimeout(resolve, 0))
@@ -99,12 +105,14 @@ test('设置页：挂载后渲染开关、时机与模型列表', async () => {
     }
 
     const text = container.textContent
-    assert.ok(text.includes('set.title'), `应渲染标题: ${text.slice(0, 200)}`)
-    assert.ok(text.includes('set.enabled'), `应有翻译开关: ${text.slice(0, 400)}`)
-    assert.ok(text.includes('set.modeSemi'), '应有时机切换')
+    assert.ok(text.includes('思维链翻译'), `应渲染标题: ${text.slice(0, 200)}`)
+    assert.ok(text.includes('启用翻译'), `应有翻译开关: ${text.slice(0, 400)}`)
+    assert.ok(text.includes('半自动'), '应有时机切换')
     assert.ok(text.includes('Hy-MT2 1.8B Q4_K_M'), '应列出模型')
-    assert.ok(text.includes('set.download'), '未安装模型应有下载按钮')
+    assert.ok(text.includes('下载'), '未安装模型应有下载按钮')
     assert.ok(text.includes('llamacpp → google'), '应显示当前翻译链')
+    assert.ok(text.includes('3.0 MB / 50.0 MB'), '应显示缓存用量')
+    assert.ok(text.includes('清理缓存'), '应有清理缓存按钮')
     root.unmount()
   } finally {
     globalThis.window = previous.window

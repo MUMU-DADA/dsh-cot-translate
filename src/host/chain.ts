@@ -12,6 +12,7 @@
 import type { ProviderState, TranslateResponse } from '../shared'
 import { LruCache, NegativeCache, cacheKey } from './cache'
 import type { CotConfig } from './config'
+import type { PersistentCache } from './persistent-cache'
 import type { FetchLike, TranslateContext, TranslateProvider } from './providers'
 import { createGoogleProvider, createLlamaCppProvider, createOllamaProvider } from './providers'
 import type { RuntimeDeps } from './runtime'
@@ -31,6 +32,8 @@ export interface TranslatorDeps {
   localRuntime?: RuntimeDeps
   /** 额外 provider（如「当前对话的 API 模型」），按 id 参与链。 */
   extraProviders?: TranslateProvider[]
+  /** 磁盘译文缓存（跨重启）；不传就是纯内存缓存。 */
+  persistent?: PersistentCache
 }
 
 /** 单个 provider 一次请求的超时信号（Node 18+ 自带 AbortSignal.timeout）。 */
@@ -47,6 +50,7 @@ export class Translator {
   private readonly log: ((message: string) => void) | undefined
   private readonly localRuntime: RuntimeDeps | undefined
   private readonly extraProviders: TranslateProvider[]
+  private readonly persistent: PersistentCache | undefined
 
   constructor(deps: TranslatorDeps) {
     this.config = deps.config
@@ -54,6 +58,7 @@ export class Translator {
     this.log = deps.log
     this.localRuntime = deps.localRuntime
     this.extraProviders = deps.extraProviders ?? []
+    this.persistent = deps.persistent
     this.cache = new LruCache<string>(deps.config.cacheSize)
     this.negative = new NegativeCache(deps.config.negativeTtlMs, 200, deps.now)
   }
@@ -111,6 +116,14 @@ export class Translator {
         continue
       }
       if (this.negative.has(key)) continue
+      // 第二层：磁盘缓存（只存译文，原文只做哈希键）。
+      const disk = this.persistent?.get(target, text)
+      if (disk !== undefined) {
+        results[index] = disk
+        this.cache.set(key, disk)
+        cached += 1
+        continue
+      }
       misses.push({ index, key, text })
     }
 
@@ -137,6 +150,7 @@ export class Translator {
         misses.forEach((miss, offset) => {
           results[miss.index] = translated[offset]
           this.cache.set(miss.key, translated[offset])
+          this.persistent?.set(target, miss.text, translated[offset], provider.id)
         })
         this.log?.(
           `[cotx] ${provider.id} ok: ${misses.length} seg / ${chars} chars / ${Date.now() - startedAt}ms` +

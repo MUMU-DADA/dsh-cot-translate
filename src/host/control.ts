@@ -28,6 +28,7 @@ import { stopLocalServer } from './runtime'
 import type { RuntimeDeps } from './runtime'
 import { createSessionModelProvider } from './session-model'
 import type { SessionModelHooks } from './session-model'
+import { PersistentCache, type CacheStats } from './persistent-cache'
 import { loadSettings, patchSettings, type CotSettings } from './settings'
 
 export interface ControlDeps {
@@ -55,6 +56,8 @@ export interface ControlState {
   target: string
   /** 插件自带模型是否就位（缺失时设置页会提示）。 */
   bundledReady: boolean
+  /** 磁盘译文缓存的占用情况。 */
+  cache: CacheStats
 }
 
 /** 自测结果。 */
@@ -79,10 +82,12 @@ const SELF_TEST_SAMPLES = [
 export class Control {
   private settings: CotSettings
   private translator: Translator
+  private readonly persistent: PersistentCache
 
   constructor(private readonly deps: ControlDeps = {}) {
     adoptLegacyModel()
     this.settings = loadSettings()
+    this.persistent = new PersistentCache()
     this.translator = this.buildTranslator()
   }
 
@@ -128,6 +133,7 @@ export class Control {
       ...(this.deps.log === undefined ? {} : { log: this.deps.log }),
       ...(this.deps.launchDeps === undefined ? {} : { localRuntime: this.deps.launchDeps }),
       extraProviders,
+      persistent: this.persistent,
     })
   }
 
@@ -153,7 +159,14 @@ export class Control {
       enabled: config.enabled,
       target: config.target,
       bundledReady: models.some((model) => model.bundled && model.installed),
+      cache: this.persistent.stats(),
     }
+  }
+
+  /** 清空磁盘译文缓存。 */
+  clearCache(): ControlState {
+    this.persistent.clear()
+    return this.state()
   }
 
   /** 合并设置并立即生效。 */

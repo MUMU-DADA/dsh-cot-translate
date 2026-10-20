@@ -7,8 +7,20 @@
  */
 
 import assert from 'node:assert/strict'
+import { mkdtempSync, rmSync } from 'node:fs'
 import { createServer } from 'node:http'
-import test from 'node:test'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import test, { after } from 'node:test'
+
+// 这些用例会走 host.apply()（内部创建 Control + 磁盘缓存）：全部落到临时目录，
+// 绝不碰真实 ~/.dsh/cot-translate。
+const HOME = mkdtempSync(join(tmpdir(), 'cotx-http-'))
+process.env.COTX_HOME = HOME
+after(() => {
+  delete process.env.COTX_HOME
+  rmSync(HOME, { recursive: true, force: true })
+})
 
 const host = await import('../lib/index.js')
 

@@ -273,6 +273,8 @@ export type {
   TranslateProvider,
 } from './host/providers'
 export {
+  CACHE_CLEAR_PATH,
+  CACHE_PATH,
   MODELS_PATH,
   MODEL_DELETE_PATH,
   MODEL_DOWNLOAD_PATH,
@@ -298,6 +300,8 @@ export {
   stopLocalServer,
 } from './host/runtime'
 export type { EnsureResult, LaunchPlan, RuntimeDeps } from './host/runtime'
+export { DEFAULT_CACHE_LIMIT_BYTES, PersistentCache } from './host/persistent-cache'
+export type { CacheStats } from './host/persistent-cache'
 export { createSessionModelProvider } from './host/session-model'
 export type { SessionModelHooks } from './host/session-model'
 export {

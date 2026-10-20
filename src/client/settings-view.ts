@@ -44,6 +44,13 @@ interface SettingsLike {
   target: string
 }
 
+interface CacheStatsLike {
+  entries: number
+  bytes: number
+  limitBytes: number
+  dir: string
+}
+
 interface StateLike {
   settings: SettingsLike
   models: ModelStatusLike[]
@@ -52,6 +59,7 @@ interface StateLike {
   enabled: boolean
   target: string
   bundledReady: boolean
+  cache: CacheStatsLike
 }
 
 interface SelfTestLike {
@@ -77,6 +85,14 @@ function sizeText(mb: number): string {
 function percent(state: DownloadStateLike | undefined): number {
   if (state === undefined || state.total <= 0) return 0
   return Math.min(100, Math.round((state.received / state.total) * 100))
+}
+
+/** 字节数 → 人类可读（KB / MB / GB）。 */
+function bytesText(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`
+  return `${(bytes / 1024 / 1024 / 1024).toFixed(2)} GB`
 }
 
 /** 设置页组件。 */
@@ -174,6 +190,20 @@ export function SettingsSection(props: SettingsSectionProps): ReactElement {
     },
     [],
   )
+
+  const clearCache = useCallback(async () => {
+    setBusy('cache')
+    try {
+      const updated = await apiPost<StateLike>('/_cotx/cache/clear')
+      setState(updated)
+      setPrefs(updated.settings)
+      setError('')
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : String(caught))
+    } finally {
+      setBusy('')
+    }
+  }, [])
 
   const selftest = useCallback(async () => {
     setBusy('selftest')
@@ -349,6 +379,46 @@ export function SettingsSection(props: SettingsSectionProps): ReactElement {
     ),
   )
 
+  const cacheRow = h(
+    'div',
+    { className: 'cotx-set-row' },
+    h(
+      'div',
+      { className: 'cotx-set-label' },
+      tr('set.cache'),
+      h(
+        'div',
+        { className: 'cotx-set-hint' },
+        tr('set.cacheHint', { limit: bytesText(state.cache.limitBytes) }),
+      ),
+      h(
+        'div',
+        { className: 'cotx-set-hint' },
+        tr('set.cacheUsage', {
+          used: bytesText(state.cache.bytes),
+          limit: bytesText(state.cache.limitBytes),
+          entries: String(state.cache.entries),
+        }),
+      ),
+    ),
+    h(
+      'div',
+      { className: 'cotx-set-actions' },
+      h(
+        'button',
+        {
+          type: 'button',
+          className: 'cotx-set-btn',
+          disabled: busy === 'cache' || state.cache.entries === 0,
+          onClick: () => {
+            void clearCache()
+          },
+        },
+        busy === 'cache' ? tr('set.cacheCleared') : tr('set.cacheClear'),
+      ),
+    ),
+  )
+
   const testRow = h(
     'div',
     { className: 'cotx-set-row' },
@@ -437,6 +507,7 @@ export function SettingsSection(props: SettingsSectionProps): ReactElement {
         },
       })),
     ),
+    cacheRow,
     testRow,
     h('p', { className: 'cotx-set-hint' }, `${tr('set.chain')}: ${state.chain.join(' → ')}`),
   )

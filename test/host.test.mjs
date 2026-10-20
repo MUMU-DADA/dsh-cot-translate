@@ -7,7 +7,7 @@
  */
 
 import assert from 'node:assert/strict'
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
@@ -627,8 +627,8 @@ test('Control：设置即时生效（关翻译 / 用会话模型 / 静态 chain 
   })
   sessionControl.update({ useSessionModel: true })
   assert.deepEqual(sessionControl.state().chain, ['session', 'ollama'])
-  const viaSession = await sessionControl.translate(['hello'], undefined, 'session-1')
-  assert.deepEqual(viaSession.translations, ['会话译文:hello'])
+  const viaSession = await sessionControl.translate(['session hello'], undefined, 'session-1')
+  assert.deepEqual(viaSession.translations, ['会话译文:session hello'])
   assert.equal(viaSession.provider, 'session')
 
   // 没有会话 id 时 session 档拿不到路由 → 降级到 ollama（换一段文本避开缓存）
@@ -652,4 +652,95 @@ test('Control：速度自测返回耗时与 provider', withTempHome(async () => 
   assert.equal(result.segments, 3)
   assert.ok(result.ms >= 0)
   assert.ok(result.perSegmentMs >= 0)
+}))
+// ── 磁盘译文缓存（M4.1）────────────────────────────────────────
+
+test('磁盘缓存：写读、统计、损坏文件自愈', withTempHome(async (dir) => {
+  const cache = new host.PersistentCache({ dir: join(dir, 'cache') })
+  assert.equal(cache.get('zh-Hans', 'hello'), undefined)
+
+  cache.set('zh-Hans', 'hello', '你好', 'llamacpp')
+  cache.set('zh-Hans', 'world', '世界', 'llamacpp')
+  assert.equal(cache.get('zh-Hans', 'hello'), '你好')
+  const stats = cache.stats()
+  assert.equal(stats.entries, 2)
+  assert.ok(stats.bytes > 0)
+  assert.equal(stats.limitBytes, host.DEFAULT_CACHE_LIMIT_BYTES, '默认上限 50MB')
+
+  // 原文不落盘：目录里不应出现原文
+  const files = []
+  const walk = (path) => {
+    for (const entry of readdirSync(path, { withFileTypes: true })) {
+      const child = join(path, entry.name)
+      if (entry.isDirectory()) walk(child)
+      else files.push(child)
+    }
+  }
+  walk(join(dir, 'cache'))
+  const contents = files.map((file) => readFileSync(file, 'utf8')).join('\n')
+  assert.ok(!contents.includes('hello'), '原文不应写入磁盘')
+  assert.ok(contents.includes('你好'), '译文应写入磁盘')
+
+  // 损坏文件：读不到就当没有，且不会抛错
+  writeFileSync(files[0], 'not-json')
+  assert.equal(cache.get('zh-Hans', 'hello'), undefined)
+  assert.equal(cache.get('zh-Hans', 'hello'), undefined, '损坏条目被清掉后仍返回 undefined')
+}))
+
+test('磁盘缓存：超过上限按最旧的淘汰', withTempHome(async (dir) => {
+  const limit = 1024
+  const cache = new host.PersistentCache({ dir: join(dir, 'cache'), limitBytes: limit })
+  for (let index = 0; index < 40; index += 1) {
+    cache.set('zh-Hans', `text-${index}`, `译文-${index}-${'x'.repeat(40)}`, 'llamacpp')
+  }
+  const stats = cache.stats()
+  assert.ok(stats.bytes <= limit, `占用应回到上限内（${stats.bytes} <= ${limit}）`)
+  assert.ok(stats.entries < 40, '应有条目被淘汰')
+  assert.equal(cache.get('zh-Hans', 'text-0'), undefined, '最旧的条目应被淘汰')
+  assert.notEqual(cache.get('zh-Hans', 'text-39'), undefined, '最新条目应保留')
+}))
+
+test('磁盘缓存：clear 清空并归零，重启后仍可读', withTempHome(async (dir) => {
+  const dirPath = join(dir, 'cache')
+  const first = new host.PersistentCache({ dir: dirPath })
+  first.set('zh-Hans', 'persist me', '持久化', 'llamacpp')
+
+  const second = new host.PersistentCache({ dir: dirPath })
+  assert.equal(second.get('zh-Hans', 'persist me'), '持久化', '新实例应能读到已有缓存')
+
+  const cleared = second.clear()
+  assert.equal(cleared.entries, 0)
+  assert.equal(cleared.bytes, 0)
+  assert.equal(new host.PersistentCache({ dir: dirPath }).get('zh-Hans', 'persist me'), undefined)
+}))
+
+test('provider 链：磁盘缓存命中不再打模型（跨实例）', withTempHome(async (dir) => {
+  const dirPath = join(dir, 'cache')
+  const config = host.normalizeConfig({
+    chain: ['ollama'],
+    llamacpp: { enabled: false, autostart: false },
+    google: { enabled: false },
+    ollama: { enabled: true, model: 'm', autostart: false },
+  })
+  const firstFetch = fakeFetch(() => jsonResponse(OLLAMA_OK))
+  const first = new host.Translator({
+    config,
+    fetchImpl: firstFetch,
+    persistent: new host.PersistentCache({ dir: dirPath }),
+  })
+  assert.deepEqual((await first.translate(['hello'])).translations, ['中文译文'])
+  assert.equal(firstFetch.calls.length, 1)
+
+  const secondFetch = fakeFetch(() => {
+    throw new Error('不应再打模型')
+  })
+  const second = new host.Translator({
+    config,
+    fetchImpl: secondFetch,
+    persistent: new host.PersistentCache({ dir: dirPath }),
+  })
+  const cached = await second.translate(['hello'])
+  assert.deepEqual(cached.translations, ['中文译文'])
+  assert.equal(cached.provider, 'cache')
+  assert.equal(secondFetch.calls.length, 0, '磁盘缓存命中后不应调用 provider')
 }))
