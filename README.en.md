@@ -47,7 +47,7 @@ dsh plugin --profile web add <path-to-this-repo>
 # Restart DSH Desktop completely after installation (HMR does not watch node_modules)
 ```
 
-Release package: download `dsh-cot-translate-0.1.0.tgz` from [GitHub Releases](https://github.com/MUMU-DADA/dsh-cot-translate/releases), then run `dsh plugin --profile web add <path-to-downloaded-tgz>`. The package includes compiled code, but no model weights or llama.cpp binaries. For a source checkout, first run `npm ci` in the repository root (builds automatically), then install using the command above.
+Release package: download `dsh-cot-translate-0.2.0.tgz` from [GitHub Releases](https://github.com/MUMU-DADA/dsh-cot-translate/releases), then run `dsh plugin --profile web add <path-to-downloaded-tgz>`. The package includes compiled code, but no model weights or llama.cpp binaries. For a source checkout, first run `npm ci` in the repository root (builds automatically), then install using the command above.
 
 To uninstall:
 
