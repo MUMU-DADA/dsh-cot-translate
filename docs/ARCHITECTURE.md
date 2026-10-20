@@ -1,137 +1,87 @@
-# 架构（目标设计与实现进度）
+# 架构设计说明（Architecture Overview）
 
-## 实现进度（2026-10-19）
+本文档用直白的语言介绍 `dsh-cot-translate` 的内部结构、数据流向以及隐私安全设计（文末附英文摘要 / English summary included below）。
 
-| 板块 | 状态 | 落地文件 |
-|---|---|---|
-| host 路由 + provider 链 + 缓存 | ✅ M2 | `src/index.ts`、`src/host/*` |
-| client 取数 + 剔除/分批/拼回 + 请求 | ✅ M3 | `src/client/{strip,translate,text}.ts` |
-| **展开思考时就地双栏对照（DOM 注入）** | ✅ M1b | `src/client/{attach,bilingual,styles}.ts` |
-| 设置页 / provider 排序 UI | ⬜ M4 | — |
+---
 
-渲染落点（ADR-014）：**展开 Think 行时就地注入**双语面板 —— 槽位做不到这件事
-（`conversation.chat.node` 是 keyed，注册 `assistant-step` 等于替换官方渲染器），
-因此改为观察 shell 自己渲染的展开态思考块，往它的 DOM 里插面板。
+## 1. 模块一览与完成状态
 
-## 总览
+| 模块 | 状态 | 对应源码 | 作用 |
+|---|---|---|---|
+| **双语对照面板** | ✅ 已完成 | `src/client/{attach,bilingual,styles,text}.ts` | 监听展开的 `Think` 思考块，就地插入“左原文、右译文”双栏面板 |
+| **代码保护与分批** | ✅ 已完成 | `src/client/{strip,translate}.ts` | 在浏览器端把代码块、路径、URL、函数名原样分离，只把自然语言分段送翻 |
+| **设置页与模型管理** | ✅ 已完成 | `src/client/{settings-view,prefs}.ts`、`src/host/{control,settings,models}.ts` | 提供开关、时机、33+ 目标语言、模型下载/更新/删除、端口配置、缓存清理与速度自测 |
+| **服务端翻译链与缓存** | ✅ 已完成 | `src/index.ts`、`src/host/{chain,providers,runtime,cache,persistent-cache,routes}.ts` | 按优先级调用会话模型 / 本地 `llama-server` / 免费 Google 兜底，提供内存 + 50MB 磁盘缓存 |
+| **多语言界面（i18n）** | ✅ 已完成 | `src/client/locales/*.json`、`src/client/locales/index.ts` | 内置简中、英、繁中、日、韩、法、德、西、俄 9 种界面语言，随 DSH 语言设置实时切换 |
 
-```
-浏览器（client 半）                              DSH host（host 半，同进程）
-┌──────────────────────────────┐                ┌────────────────────────────────┐
-│ turnTail 槽位 + turnDataSource │                │ 路由（同源，无 CORS）           │
-│ 取 assistant-step 的 reasoning│  POST /_cotx/  │   POST /_cotx/translate         │
-│ 剔除代码/路径/URL             │ ─────────────▶ │   GET  /_cotx/providers         │
-│ 段落→句子分批                 │                │   GET  /_cotx/models            │
-│ 渲染译文（内联/浮层/尾部）    │ ◀───────────── │ provider 链（用户可排序）       │
-│ 设置页 / localStorage 缓存    │  translations  │  1) 本地 llama.cpp（Hy-MT2）    │
-└──────────────────────────────┘                │  2) OpenAI 兼容端点（可选）     │
-                                                 │  3) 免费 Google / Bing          │
-                                                 │ LRU 缓存 + 30s 负缓存 + 超时    │
-                                                 └────────────────────────────────┘
-```
+---
 
-## host 半（`src/index.ts`）
+## 2. 整体工作流
 
-**职责**：provider 适配、排序与回退、缓存、超时；不关心 UI。
+插件分为两部分，运行在同一个 DSH Desktop 应用内：
+- **浏览器端（Client）**：运行在 DSH 聊天界面里，负责监听思考块展开、保护代码片段、渲染双语对照面板和设置页。
+- **服务端（Host）**：运行在 DSH 的本地 Node 进程里，负责管理本地 `llama-server` 进程、下载模型、读写设置与磁盘缓存、按顺序请求翻译源。
 
-- **路由**（exact，同源）
-  - `POST /_cotx/translate` `{ target?, segments }` → `{ translations, provider }`
-  - `GET /_cotx/providers` → 当前链与各自可用性（不含密钥、不含原文）
-  - `GET /_cotx/models` → 本地运行时里已有的模型名（llama.cpp `/v1/models` 或 Ollama `/api/tags`）
-- `GET /_cotx/state` → 设置 + 模型目录状态 + 下载进度（设置页用）
-- `POST /_cotx/settings` → 改设置，立即重建翻译链（改模型会停掉旧的 llama-server）
-- `POST /_cotx/models/download | /models/delete` → 下载/更新/删除模型（自带模型不可删）
-- `POST /_cotx/selftest` → 固定样本速度自测；`POST /_cotx/restart` → 重启本地服务
-- 编排层：`control.ts`（设置、模型、自测），HTTP 只做校验与调度
-
-设置持久化：`~/.dsh/cot-translate/settings.json`（`COTX_HOME` 可覆盖）；
-模型：自带在 `<插件根>/models/`（gitignore），下载的在 `~/.dsh/cot-translate/models/`。
-- **请求边界**：`connection.requestRejection` 做 trust fence；body ≤ 64KB；段数 1..64；
-  单段 ≤ 4000 字符；单批 ≤ 16000 字符；空段/非字符串/坏 JSON 一律 400。
-- **provider 统一接口**（`src/host/providers.ts`）
-  - `translate(segments, target, signal, fetch) => string[]`：逐段翻译，段数与输入必须等长；
-  - `probe(signal, fetch)`：可用性探测；`listModels?`：可选。
-  - `llamacpp`（默认）：`POST {baseURL}/v1/chat/completions`（llama-server 的 OpenAI 兼容接口），
-    探活 `/health`；服务未启动时按需拉起
-    `llama-server -m <gguf> --host --port -c -ngl --jinja --no-webui`（免安装、无 GUI，`llamacpp.autostart` 可关）；
-    模型从 `~/models/*.gguf` 自动发现（优先 hy-mt2 + Q4_K_M）。
-  - `ollama`（可选，默认禁用）：`POST {baseURL}/api/chat`，模型名 `auto` 从 `/api/tags` 挑；
-    采样参数按官方建议（temp 0.7 / top_p 0.6 / top_k 20 / repeat_penalty 1.05）。
-  - `google`：`translate_a/single` 免费接口，最后兜底，可配置关闭。
-  - `openai` / `anthropic`：暂未实现（M4 之后按需）。
-- **配置**（`src/host/config.ts` 纯函数归一化，不引入 schemastery，见 ADR-012）
-  - `enabled`、`target`（默认 `zh-Hans`）、`timeoutMs`、`cacheSize`、`negativeTtlMs`
-  - `chain`：provider id 顺序（默认 `['llamacpp','google']`；可插入 `ollama`）
-  - `llamacpp.{baseURL,bin,modelPath,gpuLayers,ctxSize,autostart,enabled}`
-  - `ollama.{baseURL,model,keepAlive,autostart,bin,enabled}`（可选）、`google.{endpoint,enabled}`
-  - 写错的值一律回退默认，插件不会因配置语法挂不上
-- **i18n**（ADR-022）
-  - 字典：`src/client/locales/<locale>.json`，`zh.json` 权威、`en.json` 必须一致；
-  - shell 只自带 zh/en，其余语言用 `ctx.locale.addLanguage()` 注册（fallback 链到 en）；
-  - host 只返回 `labelKey` / `noteKey` / `errorCode`，客户端渲染；切换语言即时刷新
-    （订阅 `locale/change`，面板重建、设置页重渲染）；
-  - 数字/容量用 `Intl.NumberFormat(当前语言)`；`npm run i18n:status` 看翻译进度。
-- **缓存**（三层：磁盘 → 内存 → provider）
-  - 磁盘：`~/.dsh/cot-translate/cache/`，键 `sha256(target+原文)`，文件只存译文；
-    上限 50MB，超限按 mtime 淘汰最旧；启动扫目录建索引（ADR-019）
-  - 内存 LRU ≈ 600 条：`target + 原文 → translation`
-  - 失败负缓存 30 秒（避免重试风暴）
-- **失败语义**：逐个 provider 尝试；单个失败降级；全失败 → `translations` 全空串，
-  由 client 端显示原文（fail-open），并暴露 `provider: ""` 便于 UI 提示。
-  日志只记 provider / 段数 / 字符数 / 耗时。
-
-## client 半（`src/client/index.ts`）
-
-**职责**：取文本、剔除、分批、发请求、渲染。
-
-- **数据源**：展开态思考块由 `MutationObserver` 发现（`[data-variant="think"][data-expanded]`）；
-  原文优先从数据层取 —— `[data-chat-node-key]` + `[data-conversation-session]` 定位节点，
-  再用 `ChatNodeStore.source(key)` 取第 N 个 reasoning 块的 `text`；拿不到才退回 DOM `textContent`。
-- **剔除规则**（`src/client/strip.ts`，ADR-013）：围栏代码块、行内代码、URL、Windows/POSIX
-  路径、`fn()` 调用。**分段保留**而不是占位符 —— 技术片段整段留在原位，只把自然语言片段送翻。
-- **分批**：句子块 ≤ 240 字符；每请求 ≤ 8 块、≤ 1200 字符；失败整段退回原文（不做半成功）。
-- **渲染方案**（ADR-014）：把双语面板**插进 shell 的思考正文容器**，再给容器打
-  `data-cot-bilingual` 由 CSS 隐藏原来的纯文本渲染。
-  - 每行两列：左原文（代码 `<pre>` / 行内代码 `<code>` 等宽）、右译文；
-  - 行悬停/聚焦整行高亮 —— 纯 CSS，左右天然同时亮；
-  - 窄容器（`@container max-width: 520px`）退化为上下堆叠；
-  - 折叠/重渲染时面板与标记一起移除，shell 原文自动恢复。
-  - **逐段出译文**：每个段落单独发一次翻译请求（最多 2 个并发），谁先回来谁先填右栏，
-    不等整段思考全部翻完；host 侧对一次请求内的多段也并发（2 路）。
-  - **流式节流**：进行中的思考块最后一段还在增长，面板等它 400ms 没再变化才送翻
-    （`tailSettleMs`），否则每个 token 都会打一次模型；流式结束后新段落立即送翻。
-- **缓存**：client 进程内 500 条 + host LRU 双层；`localStorage` 持久化留到 M3 收尾。
-- **设置入口**：`settings.general.item`（M4）。
-
-## 翻译流水线
-
-```
-节点变化 → 取 reasoning 文本 → 计算内容哈希
-  → 命中本地缓存？→ 直接渲染
-  → 否则剔除 + 分批 → POST /_cotx/translate
-  → 成功：渲染译文并写缓存
-  → 失败：渲染原文 + 30s 后重试标记
+```text
+浏览器界面（Client）                                本地服务端（Host，同源 HTTP）
+┌──────────────────────────────────┐              ┌────────────────────────────────────┐
+│ 1. MutationObserver 监听展开思考块 │              │ 同源路由 /_cotx/*（拒绝非本机请求） │
+│ 2. 从 ChatNodeStore 读取原始文本  │ POST /_cotx/ │   ├─ POST /_cotx/translate         │
+│ 3. 分离代码块/路径/URL（原样保留）│ ───────────▶ │   ├─ GET/POST /_cotx/state|settings│
+│ 4. 按段落并发请求（最多 2 路并发）│              │   └─ POST /_cotx/models/* | cache/*│
+│ 5. 谁先返回先填右栏 + 悬停联动高亮│ ◀─────────── │ 缓存与翻译链：                     │
+│ 6. 设置页（settings.section 槽位）│  返回各段译文 │   内存 LRU (600条) → 磁盘缓存(50MB)│
+└──────────────────────────────────┘              │   → [可选] 当前对话 API 模型       │
+                                                   │   → 本地 llama-server (Hy-MT2)     │
+                                                   │   → 免费 Google 翻译兜底           │
+                                                   └────────────────────────────────────┘
 ```
 
-## 版本与兼容
+---
 
-- 目标：dsh `0.2.0-rc.2` + cordis `4.0.4`；用到的槽位名与节点 kind 都来自该版本 bundle 的实测提取。
-- 升级桌面端时：重新提取槽位表、验证 `ChatNodeStore` API、更新 `peerDependencies`。
-- 若官方 0.2.1 的 `dsh-experimental-client-ui-cot-translation` 可用，优先评估替换自研（见 DECISIONS ADR-003）。
+## 3. 核心设计细节（为什么这么做？）
 
-## 失败模式
+### 3.1 为什么用 DOM 注入，而不是替换 DSH 的聊天节点槽位？
+DSH 的 `conversation.chat.node` 是一个“按键替换（keyed）”槽位：如果插件注册 `assistant-step`，就会把官方整个回答渲染器（包含 Markdown、图片、工具调用、折叠动画）全部顶掉，一旦 DSH 升级就会坏（详见 [ADR-011](DECISIONS.md)、[ADR-014](DECISIONS.md)）。
+因此，插件选择**不替换官方渲染器**，而是用 `MutationObserver` 观察已经展开的思考块（`[data-variant="think"][data-expanded]`），把双语面板插进思考正文容器里：
+- **原文取自数据层**：优先通过 `ChatNodeStore.source(key)` 读取原始 Markdown 文本（保留 ` ``` ` 代码围栏符号，确保代码剥离器准确识别），拿不到时才回退读 DOM 文本。
+- **安全退化**：只有面板成功挂载时才通过 `data-cot-bilingual` 隐藏原纯文本；折叠或卸载时面板与标记同时移除，原文立刻恢复。
 
-| 场景 | 行为 |
-|---|---|
-| Ollama 未安装 / 未启动 | 插件按链尝试下一档；UI 提示“本地模型不可用” |
-| 模型加载慢（首次 2–4s） | 请求超时放宽；加载期间 UI 显示“翻译中” |
-| 本地推理卡死 | 单批超时后该 provider 记为失败，本批走下一档 |
-| 全部 provider 失败 | 显示原文，30 秒后自动重试 |
-| reasoning 含大量代码 | 剔除后可能只剩短句或空 → 不送翻，直接显示原文 |
-| 会话切换/滚动 | 已翻内容走缓存，不重复请求；未展开的历史按懒加载处理 |
+### 3.2 代码与技术内容是怎么做到“一字不改”的？
+很多翻译工具把代码替换成 `<0>`、`⟦1⟧` 这样的占位符再送给模型，但小尺寸翻译模型很容易把占位符吞掉或改写，导致还原出来的代码损坏。
+本插件在 `src/client/strip.ts` 中采用**分段原位保留**（[ADR-013](DECISIONS.md)）：
+1. 先用正则识别围栏代码块、行内反引号代码、URL、Windows/POSIX 文件路径和 `fn()` 函数调用，标记为“原样保留片段”。
+2. 只把中间的自然语言片段提取出来送去翻译。
+3. 翻译回来后按原顺序直接拼回——技术片段从头到尾没有进过翻译模型，因此 100% 逐字不变。
 
-## 隐私
+### 3.3 逐段显示与流式防抖
+- **逐段并发**：一篇思考往往有好几段。面板把每一段作为独立请求发出（同时最多 2 个并发），哪一段先翻好就先在右栏显示哪一段，不用干等整篇翻完。
+- **流式尾巴稳定窗口（400ms）**：模型正在输出思考时，最后一段每个 token 都在变。面板会等最后一段停止增长满 `400ms` 后才送翻，避免每蹦一个词就打一次本地模型。
 
-- 译文只在浏览器内显示，不写回会话、不进模型上下文。
-- 服务端不记录原文（日志只记批次大小/耗时/provider）。
-- 密钥运行期从环境变量或 `~/.dsh/.credentials.yaml` 解析，配置里只有引用名。
+### 3.4 三层缓存与隐私保护
+1. **浏览器内存缓存（500 条）**：同一会话内反复展开/折叠思考块，直接 0ms 渲染。
+2. **服务端内存 LRU（600 条）** + **30 秒失败冷却缓存**：避免某个翻译源挂掉时疯狂重试。
+3. **本地磁盘缓存（上限 50MB，`~/.dsh/cot-translate/cache/`）**：
+   - 以 `sha256(目标语言 + "\0" + 原文)` 作为文件名，文件内**只存译文，不落盘原文**（防止思考中包含的敏感片段明文留在缓存目录里，见 [ADR-007](DECISIONS.md)、[ADR-019](DECISIONS.md)）。
+   - 超出 50MB 时按修改时间自动清理最旧条目到 90% 水位，也可在设置页一键清空。
+
+### 3.5 本地 `llama-server` 按需拉起与端口管理
+- 默认监听 `127.0.0.1:28457`（避开 8080 等常用端口，可在设置页随时修改并探测端口占用状态，见 [ADR-021](DECISIONS.md)）。
+- 当需要翻译且探测到本地端口未就绪时，插件自动以无窗口模式（detached、`--no-webui`、`--jinja`）启动 `llama-server`。
+- 在设置页切换模型或修改端口时，插件会自动停掉自己之前拉起的 `llama-server` 实例，下次翻译时按新配置重新拉起。
+
+---
+
+## 4. English Architecture Summary
+
+`dsh-cot-translate` is split into two halves running inside DSH Desktop:
+
+1. **Client Half (`src/client/`)**:
+   - Watches expanded `Think` blocks (`[data-variant="think"][data-expanded]`) via `MutationObserver` and injects a side-by-side bilingual DOM panel without replacing DSH's native `assistant-step` renderer ([ADR-014](DECISIONS.md)).
+   - Reads raw Markdown from `ChatNodeStore.source(key)` so fenced code blocks retain backticks, then splits text into **kept technical spans** (code, paths, URLs, `fn()`) and **translatable natural-language spans** ([ADR-013](DECISIONS.md)).
+   - Translates paragraph by paragraph (up to 2 concurrent requests) and debounces the active streaming tail by `400ms`.
+   - Registers the `Settings → Chain-of-thought translation` page (`settings.section` slot) and 9 UI locales (`zh`, `en`, `zh-Hant`, `ja`, `ko`, `fr`, `de`, `es`, `ru`).
+2. **Host Half (`src/host/`)**:
+   - Exposes same-origin loopback routes under `/_cotx/*` protected by `connection.requestRejection`.
+   - Orchestrates the translation provider chain: optional active conversation API model (`ctx.llm.stream`) → local `llama.cpp` `llama-server` (auto-started headlessly on port `28457` with Tencent **Hy-MT2** GGUF models) → optional Ollama → free Google Translate fallback.
+   - Provides a two-tier host cache: in-memory LRU (600 entries, plus 30s negative cache) backed by a 50 MB disk cache (`~/.dsh/cot-translate/cache/`) keyed by `sha256(target + "\0" + source)` that **stores translations only, never source text**.
