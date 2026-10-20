@@ -67,6 +67,13 @@ interface StateLike {
   bundledReady: boolean
   cache: CacheStatsLike
   languages: LanguageLike[]
+  localPort: number
+}
+
+interface PortStatusLike {
+  port: number
+  free: boolean
+  ours: boolean
 }
 
 interface SelfTestLike {
@@ -109,6 +116,8 @@ export function SettingsSection(props: SettingsSectionProps): ReactElement {
   const [error, setError] = useState<string>('')
   const [busy, setBusy] = useState<string>('')
   const [test, setTest] = useState<SelfTestLike | null>(null)
+  const [portDraft, setPortDraft] = useState<string>('')
+  const [portStatus, setPortStatus] = useState<PortStatusLike | null>(null)
   const polling = useRef<ReturnType<typeof setInterval> | undefined>(undefined)
 
   const refresh = useCallback(async () => {
@@ -127,6 +136,7 @@ export function SettingsSection(props: SettingsSectionProps): ReactElement {
       if (polling.current !== undefined) clearInterval(polling.current)
     }
   }, [refresh])
+
 
   // 有下载任务时轮询进度
   useEffect(() => {
@@ -197,6 +207,41 @@ export function SettingsSection(props: SettingsSectionProps): ReactElement {
     },
     [],
   )
+
+  const checkPort = useCallback(async (port: number) => {
+    try {
+      setPortStatus(await apiGet<PortStatusLike>(`/_cotx/port?port=${port}`))
+    } catch {
+      setPortStatus(null)
+    }
+  }, [])
+
+  // 端口草稿跟随设置；并探测一次端口状态（放在 checkPort 定义之后，避免 TDZ）
+  useEffect(() => {
+    if (state === null) return
+    setPortDraft(String(state.localPort))
+    void checkPort(state.localPort)
+  }, [state?.localPort, checkPort])
+
+  const applyPort = useCallback(async () => {
+    const value = Number(portDraft)
+    if (!Number.isInteger(value) || value < 1024 || value > 65535) {
+      setError(tr('set.portInvalid'))
+      return
+    }
+    setBusy('port')
+    try {
+      const updated = await apiPost<StateLike>('/_cotx/settings', { localPort: value })
+      setState(updated)
+      setPrefs(updated.settings)
+      setError('')
+      await checkPort(value)
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : String(caught))
+    } finally {
+      setBusy('')
+    }
+  }, [portDraft, checkPort, tr])
 
   const clearCache = useCallback(async () => {
     setBusy('cache')
@@ -413,6 +458,62 @@ export function SettingsSection(props: SettingsSectionProps): ReactElement {
     ),
   )
 
+  const portStatusText =
+    portStatus === null
+      ? ''
+      : portStatus.free
+        ? tr('set.portFree')
+        : portStatus.ours
+          ? tr('set.portOurs')
+          : tr('set.portBusy')
+
+  const portRow = h(
+    'div',
+    { className: 'cotx-set-row' },
+    h(
+      'div',
+      { className: 'cotx-set-label' },
+      tr('set.port'),
+      h('div', { className: 'cotx-set-hint' }, tr('set.portHint')),
+      portStatusText === ''
+        ? null
+        : h(
+            'div',
+            {
+              className: portStatus?.free === true ? 'cotx-set-ok' : 'cotx-set-bad',
+            },
+            portStatusText,
+          ),
+    ),
+    h(
+      'div',
+      { className: 'cotx-set-actions' },
+      h('input', {
+        type: 'number',
+        className: 'cotx-set-input',
+        min: 1024,
+        max: 65535,
+        value: portDraft,
+        onChange: (event: { target: { value: string } }) => setPortDraft(event.target.value),
+        onKeyDown: (event: { key: string }) => {
+          if (event.key === 'Enter') void applyPort()
+        },
+      }),
+      h(
+        'button',
+        {
+          type: 'button',
+          className: 'cotx-set-btn',
+          disabled: busy === 'port',
+          onClick: () => {
+            void applyPort()
+          },
+        },
+        tr('set.portSave'),
+      ),
+    ),
+  )
+
   const cacheRow = h(
     'div',
     { className: 'cotx-set-row' },
@@ -543,6 +644,7 @@ export function SettingsSection(props: SettingsSectionProps): ReactElement {
       })),
     ),
     cacheRow,
+    portRow,
     testRow,
     h('p', { className: 'cotx-set-hint' }, `${tr('set.chain')}: ${state.chain.join(' → ')}`),
   )

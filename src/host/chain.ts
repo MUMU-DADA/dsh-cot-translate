@@ -101,6 +101,8 @@ export class Translator {
     if (!this.config.enabled || segments.length === 0) {
       return { translations: segments.map(() => ''), provider: '' }
     }
+    // 空的目标语言会拼出 "Translate into ."，兜底到配置值（再由 provider 决定）。
+    const effectiveTarget = target.trim() === '' ? this.config.target : target
 
     const results: string[] = segments.map(() => '')
     const misses: Array<{ index: number; key: string; text: string }> = []
@@ -108,7 +110,7 @@ export class Translator {
 
     for (let index = 0; index < segments.length; index += 1) {
       const text = segments[index]
-      const key = cacheKey(target, text)
+      const key = cacheKey(effectiveTarget, text)
       const hit = this.cache.get(key)
       if (hit !== undefined) {
         results[index] = hit
@@ -117,7 +119,7 @@ export class Translator {
       }
       if (this.negative.has(key)) continue
       // 第二层：磁盘缓存（只存译文，原文只做哈希键）。
-      const disk = this.persistent?.get(target, text)
+      const disk = this.persistent?.get(effectiveTarget, text)
       if (disk !== undefined) {
         results[index] = disk
         this.cache.set(key, disk)
@@ -139,7 +141,7 @@ export class Translator {
       try {
         const translated = await provider.translate(
           misses.map((miss) => miss.text),
-          target,
+          effectiveTarget,
           timeoutSignal(this.config.timeoutMs),
           fetchImpl,
           context,
@@ -150,7 +152,7 @@ export class Translator {
         misses.forEach((miss, offset) => {
           results[miss.index] = translated[offset]
           this.cache.set(miss.key, translated[offset])
-          this.persistent?.set(target, miss.text, translated[offset], provider.id)
+          this.persistent?.set(effectiveTarget, miss.text, translated[offset], provider.id)
         })
         this.log?.(
           `[cotx] ${provider.id} ok: ${misses.length} seg / ${chars} chars / ${Date.now() - startedAt}ms` +

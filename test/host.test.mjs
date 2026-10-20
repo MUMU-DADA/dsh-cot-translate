@@ -8,6 +8,7 @@
 
 import assert from 'node:assert/strict'
 import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
+import { createServer } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
@@ -781,3 +782,73 @@ test('多语言：provider 请求体里是完整语言名', async () => {
   assert.match(body.messages[0].content, /French/)
   assert.ok(!body.messages[0].content.includes('into fr '), '不能把缩写直接塞进提示词')
 })
+test('设置：服务端口归一化（1024–65535，坏值回退 28457）', () => {
+  assert.equal(host.DEFAULT_SETTINGS.localPort, host.DEFAULT_LOCAL_PORT)
+  assert.equal(host.DEFAULT_LOCAL_PORT, 28457)
+  assert.equal(host.normalizeSettings({}).localPort, 28457)
+  assert.equal(host.normalizeSettings({ localPort: 30000 }).localPort, 30000)
+  assert.equal(host.normalizeSettings({ localPort: 80 }).localPort, 28457, '1024 以下回退')
+  assert.equal(host.normalizeSettings({ localPort: 70000 }).localPort, 28457, '越界回退')
+  assert.equal(host.normalizeSettings({ localPort: 'x' }).localPort, 28457, '非数字回退')
+})
+
+test('Control：改端口立即生效（baseURL 跟着变）', withTempHome(async () => {
+  const control = new host.Control({
+    staticConfig: {
+      chain: ['ollama'],
+      google: { enabled: false },
+      ollama: { enabled: true, model: 'm', autostart: false },
+    },
+    fetchImpl: fakeFetch(() => jsonResponse(OLLAMA_OK)),
+  })
+  assert.equal(control.state().localPort, 28457)
+  const updated = control.update({ localPort: 30555 })
+  assert.equal(updated.localPort, 30555)
+  assert.match(control.configView().llamacpp.baseURL, /:30555$/)
+}))
+
+test('probePort：空闲 / 被占用 / 不是我们的服务', withTempHome(async () => {
+  const free = await host.probePort(28457 + 2000 + Math.floor(Math.random() * 500))
+  assert.equal(free.free, true)
+
+  const server = createServer((_req, res) => {
+    res.statusCode = 404
+    res.end('nope')
+  })
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
+  const port = server.address().port
+  try {
+    const occupied = await host.probePort(port)
+    assert.equal(occupied.free, false)
+    assert.equal(occupied.ours, false, '不是 llama-server 的 /health')
+  } finally {
+    await new Promise((resolve) => server.close(resolve))
+  }
+}))
+test('目标语言未初始化：不拼空提示词（回退 zh-Hans）', withTempHome(async () => {
+  let body
+  const fetchImpl = fakeFetch((_url, init) => {
+    body = JSON.parse(init.body)
+    return jsonResponse(OLLAMA_OK)
+  })
+  const staticConfig = {
+    chain: ['ollama'],
+    google: { enabled: false },
+    ollama: { enabled: true, model: 'm', autostart: false },
+  }
+  const control = new host.Control({ staticConfig, fetchImpl })
+  assert.equal(control.state().settings.target, '', '默认未初始化')
+  const result = await control.translate(['hello'])
+  assert.deepEqual(result.translations, ['中文译文'])
+  const system = body.messages.find((message) => message.role === 'system').content
+  assert.match(system, /Simplified Chinese/, '空 target 应回退 zh-Hans')
+
+  // 直接给 Translator 传空串也不能拼出空提示词
+  const translator = new host.Translator({
+    config: host.normalizeConfig({ chain: ['ollama'], google: { enabled: false }, ollama: { enabled: true, model: 'm', autostart: false } }),
+    fetchImpl,
+  })
+  await translator.translate(['hello2'], '')
+  const system2 = body.messages.find((message) => message.role === 'system').content
+  assert.match(system2, /Simplified Chinese/)
+}))

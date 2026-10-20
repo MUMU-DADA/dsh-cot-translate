@@ -25,6 +25,7 @@ export const MODEL_DOWNLOAD_PATH = '/_cotx/models/download'
 export const MODEL_DELETE_PATH = '/_cotx/models/delete'
 export const SELFTEST_PATH = '/_cotx/selftest'
 export const RESTART_PATH = '/_cotx/restart'
+export const PORT_PATH = '/_cotx/port'
 export const CACHE_PATH = '/_cotx/cache'
 export const CACHE_CLEAR_PATH = '/_cotx/cache/clear'
 
@@ -327,6 +328,20 @@ export function registerRoutes(options: RouteOptions): Array<() => void> {
       return
     }
     sendJson(res, 200, control.restart())
+  })
+
+  exact(PORT_PATH, async (req, res) => {
+    if (req.method !== 'GET') {
+      sendMethodNotAllowed(res, 'GET')
+      return
+    }
+    const raw = new URL(req.url ?? '/', 'http://127.0.0.1').searchParams.get('port') ?? ''
+    const port = Number(raw)
+    if (!Number.isSafeInteger(port) || port < 1024 || port > 65535) {
+      sendJson(res, 400, { error: 'bad-request', message: 'port must be 1024..65535' })
+      return
+    }
+    sendJson(res, 200, await control.portStatus(port))
   })
 
   exact(CACHE_PATH, async (req, res) => {

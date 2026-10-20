@@ -58,6 +58,13 @@ const zh: NamespaceDictionary = {
   'set.chain': '当前翻译来源',
 
   // ── 设置页：翻译缓存 ──────────────────────────────────────
+  'set.port': '本地服务端口',
+  'set.portHint': 'llama-server 监听的回环端口（1024–65535）。默认 28457，避开常见端口；改完下次翻译会按新端口重新拉起。',
+  'set.portSave': '应用',
+  'set.portFree': '端口空闲',
+  'set.portOurs': '本地服务正在使用该端口',
+  'set.portBusy': '端口被其他程序占用',
+  'set.portInvalid': '端口必须是 1024–65535 之间的整数',
   'set.cache': '翻译缓存',
   'set.cacheHint': '译文缓存在本地（只存译文，原文不落盘），重启后已翻过的内容直接命中。上限 {limit}，超出后自动清理最旧的。',
   'set.cacheUsage': '{used} / {limit} · {entries} 条',
@@ -120,6 +127,14 @@ const en: NamespaceDictionary = {
   'set.chain': 'Current providers',
 
   // ── settings: translation cache ───────────────────────────
+  'set.port': 'Local service port',
+  'set.portHint':
+    'Loopback port for llama-server (1024–65535). Default 28457, deliberately uncommon; the next translation restarts the server on the new port.',
+  'set.portSave': 'Apply',
+  'set.portFree': 'Port is free',
+  'set.portOurs': 'Used by our local service',
+  'set.portBusy': 'Port is used by another program',
+  'set.portInvalid': 'Port must be an integer between 1024 and 65535',
   'set.cache': 'Translation cache',
   'set.cacheHint':
     'Translations are cached locally (translations only — source text is never written to disk). Restarts reuse them. Cap {limit}; the oldest entries are evicted automatically.',

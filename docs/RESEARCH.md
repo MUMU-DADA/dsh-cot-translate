@@ -185,7 +185,7 @@ Ollama 现成标签（已核实）：
 | 位置 | `%USERPROFILE%\tools\llama.cpp\`（解压即用，无注册表、无托盘、无自启） |
 | 模型 | `tencent/Hy-MT2-1.8B-GGUF` 的 `Hy-MT2-1.8B-Q4_K_M.gguf`，1080.6MB |
 | 模型位置 | `%USERPROFILE%\models\` |
-| 启动参数 | `-m <gguf> --host 127.0.0.1 --port 18099 -c 4096 -ngl 99 --jinja --no-webui` |
+| 启动参数 | `-m <gguf> --host 127.0.0.1 --port 28457 -c 4096 -ngl 99 --jinja --no-webui`（端口可在设置页改） |
 | 显存 | 约 1.5GB（含 DSH 共 3.6GB / 10.2GB） |
 | 接口 | OpenAI 兼容 `POST /v1/chat/completions`；探活 `GET /health` |
 | chat 模板 | 模型自带 jinja 模板（`<｜hy_User｜>` / `<｜hy_Assistant｜>`），`--jinja` 直接生效 |
@@ -214,7 +214,8 @@ Ollama 现成标签（已核实）：
 - `llama-server` 默认端口是 **9931**；默认还会起自带 Web UI，无 GUI 需求下必须加 `--no-webui`。
 - **端口冲突**：8080 可能被其他应用占用，任何
   打到 8080 的请求都会被它返回 403 中文提示；llama-server 抢不到端口 → 本地翻译静默降级到 Google。
-  已把默认端口改为 18099，并在 401/403 错误里加提示（ADR-020）。
+  已把默认端口改为不常见值（ADR-020 → 18099，ADR-021 → 28457，设置页可改），
+  并在 401/403 错误里加提示。
 - **语言**：Hy-MT2 支持 33 种语言（+繁体/粤语），提示词必须用完整语言名（英文全名），缩写会掉质量。
   实测本地 1.8B 翻 en→ja/ko/fr/de/es/ru/ar/th/vi/hi 全部正常，170–400ms/段。
 - Vulkan 构建不需要 CUDA 运行时（比 CUDA 构建省 632MB 下载），10GB 级 NVIDIA 独显 实测够快。

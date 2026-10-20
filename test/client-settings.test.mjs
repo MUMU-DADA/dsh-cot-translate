@@ -60,6 +60,7 @@ const STATE = {
     { code: 'en', en: 'English', zh: '英语' },
     { code: 'ja', en: 'Japanese', zh: '日语' },
   ],
+  localPort: 28457,
 }
 
 test('设置页：挂载后渲染开关、时机与模型列表', async () => {
@@ -73,11 +74,12 @@ test('设置页：挂载后渲染开关、时机与模型列表', async () => {
   }
   globalThis.window = dom.window
   globalThis.document = dom.window.document
-  const fetchStub = async () => ({
-    ok: true,
-    status: 200,
-    json: async () => STATE,
-  })
+  const fetchStub = async (url) => {
+    if (String(url).includes('/_cotx/port')) {
+      return { ok: true, status: 200, json: async () => ({ port: 28457, free: true, ours: false }) }
+    }
+    return { ok: true, status: 200, json: async () => STATE }
+  }
   globalThis.fetch = fetchStub
   dom.window.fetch = fetchStub
 
@@ -119,6 +121,8 @@ test('设置页：挂载后渲染开关、时机与模型列表', async () => {
     assert.ok(text.includes('3.0 MB / 50.0 MB'), '应显示缓存用量')
     assert.ok(text.includes('清理缓存'), '应有清理缓存按钮')
     assert.ok(text.includes('译文语言'), '应有目标语言选择')
+    assert.ok(text.includes('本地服务端口'), '应有服务端口设置')
+    assert.ok(text.includes('端口空闲'), '应显示端口状态')
     root.unmount()
   } finally {
     globalThis.window = previous.window

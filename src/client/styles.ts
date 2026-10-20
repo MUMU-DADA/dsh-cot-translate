@@ -205,6 +205,16 @@ const CSS = `
   font-weight: 600;
 }
 
+.cotx-set-input {
+  width: 110px;
+  padding: 6px 8px;
+  border: 1px solid var(--dsw-alias-border-l2, rgba(127, 127, 127, 0.25));
+  border-radius: 8px;
+  background: var(--dsw-alias-bg-base, transparent);
+  color: inherit;
+  font-size: 13px;
+}
+
 .cotx-set-select {
   min-width: 220px;
   padding: 6px 8px;

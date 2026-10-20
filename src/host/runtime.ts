@@ -12,6 +12,7 @@
 
 import { spawn } from 'node:child_process'
 import { existsSync, readdirSync } from 'node:fs'
+import { connect } from 'node:net'
 import { homedir, platform } from 'node:os'
 import { basename, join } from 'node:path'
 
@@ -208,8 +209,8 @@ export function modelLabel(path: string): string {
   return basename(path).replace(/\.gguf$/i, '')
 }
 
-/** 本地服务默认端口：8080 太容易被别的应用占用（实测被一个 python 应用抢过）。 */
-const DEFAULT_PORT = '18099'
+/** 本地服务默认端口：刻意避开常见端口（8080 实测被其他应用占用过）。 */
+const DEFAULT_PORT = '28457'
 
 /** 从 baseURL 取端口（非法时回退默认端口）。 */
 export function portOf(baseURL: string): string {
@@ -218,6 +219,35 @@ export function portOf(baseURL: string): string {
     return url.port === '' ? DEFAULT_PORT : url.port
   } catch {
     return DEFAULT_PORT
+  }
+}
+
+/**
+ * 探测某个端口：是否空闲、占用者是不是我们的 llama-server。
+ * 先 TCP connect（比 curl 快、不产生 HTTP 日志），连上了再探 `/health` 判断是不是自己人。
+ */
+export async function probePort(
+  port: number,
+  fetchImpl: FetchLike = globalThis.fetch,
+): Promise<{ free: boolean; ours: boolean }> {
+  const occupied = await new Promise<boolean>((resolve) => {
+    const socket = connect({ host: '127.0.0.1', port })
+    const finish = (value: boolean): void => {
+      socket.destroy()
+      resolve(value)
+    }
+    socket.setTimeout(600, () => finish(false))
+    socket.once('connect', () => finish(true))
+    socket.once('error', () => finish(false))
+  })
+  if (!occupied) return { free: true, ours: false }
+  try {
+    const response = await fetchImpl(`http://127.0.0.1:${port}/health`, {
+      signal: AbortSignal.timeout(1200),
+    })
+    return { free: false, ours: response.ok }
+  } catch {
+    return { free: false, ours: false }
   }
 }
 

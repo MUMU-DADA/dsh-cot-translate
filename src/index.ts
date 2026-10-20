@@ -275,6 +275,7 @@ export type {
 export {
   CACHE_CLEAR_PATH,
   CACHE_PATH,
+  PORT_PATH,
   MODELS_PATH,
   MODEL_DELETE_PATH,
   MODEL_DOWNLOAD_PATH,
@@ -291,6 +292,7 @@ export {
   sendMethodNotAllowed,
 } from './host/routes'
 export {
+  probePort,
   defaultLlamaServerBin,
   defaultModelPath,
   defaultOllamaBin,
@@ -307,7 +309,10 @@ export type { CacheStats } from './host/persistent-cache'
 export { createSessionModelProvider } from './host/session-model'
 export type { SessionModelHooks } from './host/session-model'
 export {
+  DEFAULT_LOCAL_PORT,
   DEFAULT_SETTINGS,
+  MAX_LOCAL_PORT,
+  MIN_LOCAL_PORT,
   dataDir,
   loadSettings,
   normalizeSettings,

@@ -25,7 +25,7 @@ import {
   type ModelStatus,
 } from './models'
 import type { FetchLike, TranslateContext } from './providers'
-import { stopLocalServer } from './runtime'
+import { probePort, stopLocalServer } from './runtime'
 import type { RuntimeDeps } from './runtime'
 import { createSessionModelProvider } from './session-model'
 import type { SessionModelHooks } from './session-model'
@@ -59,6 +59,8 @@ export interface ControlState {
   bundledReady: boolean
   /** 磁盘译文缓存的占用情况。 */
   cache: CacheStats
+  /** 本地服务端口（设置页显示/调整）。 */
+  localPort: number
   /** 可选的目标语言（设置页下拉用）。 */
   languages: readonly Language[]
 }
@@ -100,6 +102,8 @@ export class Control {
     const modelPath = resolveModelPath(this.settings.modelId) ?? ''
     // 空 target = 客户端还没初始化：先用兜底语言，等客户端写入真正语言。
     const target = this.settings.target === '' ? FALLBACK_TARGET : this.settings.target
+    // 端口以设置为准（设置页可改），覆盖 patch 里的默认地址。
+    const baseURL = `http://127.0.0.1:${this.settings.localPort}`
     // 静态配置里的 chain 是底线（测试/自定义部署用它锁定来源）；
     // 「用对话模型翻译」只会在最前面插一档。
     const chain: ProviderId[] = [...base.chain]
@@ -114,7 +118,7 @@ export class Control {
       enabled: base.enabled && this.settings.enabled,
       target,
       chain,
-      llamacpp: { ...base.llamacpp, modelPath },
+      llamacpp: { ...base.llamacpp, modelPath, baseURL },
     }
   }
 
@@ -165,8 +169,14 @@ export class Control {
       target: config.target,
       bundledReady: models.some((model) => model.bundled && model.installed),
       cache: this.persistent.stats(),
+      localPort: this.settings.localPort,
       languages: LANGUAGES,
     }
+  }
+
+  /** 探测端口状态（设置页用）。 */
+  portStatus(port: number): Promise<{ port: number; free: boolean; ours: boolean }> {
+    return probePort(port, this.deps.fetchImpl).then((status) => ({ port, ...status }))
   }
 
   /** 清空磁盘译文缓存。 */
@@ -180,12 +190,18 @@ export class Control {
     const previous = this.settings
     this.settings = patchSettings(patch)
     const modelChanged = previous.modelId !== this.settings.modelId
+    const portChanged = previous.localPort !== this.settings.localPort
     const behaviorChanged =
       previous.useSessionModel !== this.settings.useSessionModel ||
       previous.enabled !== this.settings.enabled ||
       previous.target !== this.settings.target ||
-      modelChanged
+      modelChanged ||
+      portChanged
     if (modelChanged) this.stopLocal()
+    if (portChanged) {
+      // 旧端口上的服务是我们拉起来的就停掉；下次请求按新端口重新拉起。
+      stopLocalServer(`http://127.0.0.1:${previous.localPort}`)
+    }
     if (behaviorChanged) this.translator = this.buildTranslator()
     return this.state()
   }
@@ -194,9 +210,11 @@ export class Control {
   translate(segments: readonly string[], target?: string, sessionId?: string): Promise<TranslateResponse> {
     const context: TranslateContext | undefined =
       sessionId === undefined || sessionId === '' ? undefined : { sessionId }
-    return target === undefined
-      ? this.translator.translate(segments, this.settings.target, context)
-      : this.translator.translate(segments, target, context)
+    // 目标语言可能还没被客户端初始化（空串），这里必须换成兜底语言，
+    // 否则提示词会变成 "Translate into ."，模型只能乱译。
+    const resolved =
+      target === undefined || target === '' ? this.buildConfig().target : target
+    return this.translator.translate(segments, resolved, context)
   }
 
   /**

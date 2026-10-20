@@ -23,17 +23,27 @@ export interface CotSettings {
   modelId: string
   /** 用当前对话的 API 模型翻译（而不是本地模型） */
   useSessionModel: boolean
-  /** 目标语言 */
+  /** 目标语言（"" = 待客户端按自己的语言初始化） */
   target: string
+  /** 本地 llama-server 的端口（可在设置页调整） */
+  localPort: number
 }
 
 /** 目标语言为空（""）表示「还没定，等客户端按自己的语言初始化」。 */
+/** 默认服务端口：刻意避开 8080/3000/5000 这类常见端口。 */
+export const DEFAULT_LOCAL_PORT = 28457
+
+/** 端口的合法范围（1024–65535；1024 以下需要管理员权限）。 */
+export const MIN_LOCAL_PORT = 1024
+export const MAX_LOCAL_PORT = 65535
+
 export const DEFAULT_SETTINGS: CotSettings = {
   enabled: true,
   mode: 'semi',
   modelId: 'hy-mt2-1.8b-q4',
   useSessionModel: false,
   target: '',
+  localPort: DEFAULT_LOCAL_PORT,
 }
 
 /** target 未初始化时，host 端兜底用的语言（客户端没来/拿不到时）。 */
@@ -65,6 +75,11 @@ export function normalizeSettings(raw: unknown): CotSettings {
       ? source.target.trim().slice(0, 32)
       : DEFAULT_SETTINGS.target
   const target = rawTarget === '' || isKnownLanguage(rawTarget) ? rawTarget : DEFAULT_SETTINGS.target
+  const rawPort = source.localPort
+  const localPort =
+    typeof rawPort === 'number' && Number.isSafeInteger(rawPort) && rawPort >= MIN_LOCAL_PORT && rawPort <= MAX_LOCAL_PORT
+      ? rawPort
+      : DEFAULT_SETTINGS.localPort
   return {
     enabled: typeof source.enabled === 'boolean' ? source.enabled : DEFAULT_SETTINGS.enabled,
     mode,
@@ -74,6 +89,7 @@ export function normalizeSettings(raw: unknown): CotSettings {
         ? source.useSessionModel
         : DEFAULT_SETTINGS.useSessionModel,
     target,
+    localPort,
   }
 }
 

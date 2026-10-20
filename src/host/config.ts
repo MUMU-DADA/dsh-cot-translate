@@ -15,7 +15,7 @@ export type ProviderId = (typeof PROVIDER_IDS)[number]
 
 export interface LlamaCppConfig {
   enabled: boolean
-  /** llama-server 的地址；默认 127.0.0.1:18099（8080 常被别的应用占用）。 */
+  /** llama-server 的地址；默认 127.0.0.1:28457（可在设置页改端口）。 */
   baseURL: string
   /** llama-server 可执行文件；空串 = 自动在常见位置找。 */
   bin: string
@@ -81,7 +81,7 @@ export const DEFAULT_CONFIG: CotConfig = {
   chain: ['llamacpp', 'google'],
   llamacpp: {
     enabled: true,
-    baseURL: 'http://127.0.0.1:18099',
+    baseURL: 'http://127.0.0.1:28457',
     bin: '',
     modelPath: '',
     gpuLayers: 99,
