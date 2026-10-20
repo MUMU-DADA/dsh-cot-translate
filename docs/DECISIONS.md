@@ -446,6 +446,36 @@ ADR-016 说「不把模型打包进插件」针对的是 **npm 包体积**（1.1
 
 ---
 
+## ADR-022 插件 i18n：JSON 字典 + key-only 的 host 载荷 + 可选语言注册
+
+**背景**：插件此前只有 zh/en 两种文案，硬编码在 `src/client/locales.ts`；host 半还会
+返回中文展示文案（模型说明、provider 名称、自测错误），多语言无从谈起。用户要求
+给插件做 i18n 支持，并由另一位 AI 负责把 UI 文案翻译成多种语言。
+
+**决策**
+
+- 字典改成 **`src/client/locales/<locale>.json`**（翻译人员直接改 JSON，不碰 TS）；
+  `zh.json` 是权威 key 清单，`en.json` 必须与之 key 完全一致，其它语言可只翻一部分。
+- **host 不再拼展示文案**：只返回 `labelKey`（provider）、`noteKey`（模型说明）、
+  `errorCode`（自测失败）；英文规范名作为后备字段。客户端按当前语言渲染。
+- **额外 UI 语言通过 `ctx.locale.addLanguage()` 注册**（shell 只自带 zh/en）：
+  zh-Hant（fallback zh）、ja、ko、fr、de、es、ru（fallback en）；用户可在 DSH
+  语言设置里选择，切换即时生效。
+- **语言切换响应**：客户端订阅 `locale/change`（拿不到时退回观察 `<html lang>`）；
+  设置页强制重渲染，双语面板整体重建。
+- **数字/容量**用 `Intl.NumberFormat(当前语言)`；不手写 `toFixed` 拼字符串。
+- 新增 `npm run i18n:status` 输出各语言完成度/缺失/未知 key；测试校验 zh/en 一致、
+  其它语言无未知 key、注册表与 JSON 文件一一对应。
+- 翻译指南：`docs/I18N.md`。
+
+**后果**
+
+- 新增文案必须同时改 `zh.json` 和 `en.json`（否则测试失败）；其它语言可渐进补齐。
+- host 的 `label`/`note` 变成英文后备；直接读 `/providers` 的外部使用者拿到的是英文规范名。
+- 加新语言 = 一个 JSON 文件 + `LOCALE_PACKS` 一行，不需要改组件。
+
+---
+
 ## 开放问题
 
 1. ~~**内联渲染是否可行**~~ → 已答：不可行（keyed + 替换语义），见 ADR-011；最终用 DOM 注入，见 ADR-014。

@@ -56,7 +56,10 @@ export interface TranslateResponse {
 export interface ProviderState {
   id: string
   kind: ProviderKind
+  /** 英文规范名（语言中立的后备显示名）。 */
   label: string
+  /** 客户端本地化用的文案 key，例如 `provider.llamacpp`。 */
+  labelKey?: string
   model?: string
   enabled: boolean
   available: boolean

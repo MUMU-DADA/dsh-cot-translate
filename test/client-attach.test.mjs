@@ -405,6 +405,7 @@ test('关闭翻译：不注入面板，也不发请求', async (context) => {
 test('apply：注册设置页（settings.section）并保持双语注入', async () => {
   const registered = []
   const injectedNames = []
+  const addedLanguages = []
   const ctx = {
     effect(callback) {
       callback()
@@ -428,6 +429,10 @@ test('apply：注册设置页（settings.section）并保持双语注入', async
       bind() {
         return (key) => key
       },
+      addLanguage(language) {
+        addedLanguages.push(language.id)
+        return () => {}
+      },
     },
     sessions: { binding: () => undefined },
     uiConversation: { binding: () => ({ target: () => ({ getSnapshot: () => undefined }) }) },
@@ -442,6 +447,9 @@ test('apply：注册设置页（settings.section）并保持双语注入', async
   assert.ok(section !== undefined, '应注册 settings.section')
   assert.equal(section.options.id, 'cot-translate')
   assert.equal(typeof section.component, 'function', '设置页应是 React 组件')
+  assert.ok(addedLanguages.includes('ja'), '应注册额外 UI 语言 ja')
+  assert.ok(addedLanguages.includes('zh-Hant'), '应注册繁体中文')
+  assert.ok(!addedLanguages.includes('zh'), 'zh/en 是 shell 自带的，不重复注册')
   // 其它槽位不应被误注册
   assert.deepEqual(
     registered.map((item) => item.options.name),

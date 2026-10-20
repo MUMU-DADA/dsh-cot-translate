@@ -47,6 +47,8 @@ export interface AttachOptions {
   throttleMs?: number
   /** 运行中尾巴的稳定窗口（毫秒），透传给面板；测试里调小。 */
   tailSettleMs?: number
+  /** 订阅界面语言变化；变化时重建面板（表头/状态文案跟着换语言）。 */
+  subscribeLocale?: (callback: () => void) => () => void
 }
 
 export interface AttachHandle {
@@ -214,6 +216,12 @@ export function attachBilingual(options: AttachOptions): AttachHandle {
   }
 
   const unsubscribePrefs = onPrefs(schedule)
+  // 语言切换：面板文案（原文/译文/翻译中…）要重建，否则会停留旧语言。
+  const unsubscribeLocale = options.subscribeLocale?.(() => {
+    if (disposed) return
+    detachAll()
+    scan()
+  })
 
   scan()
   if (typeof MutationObserver !== 'undefined') {
@@ -232,6 +240,7 @@ export function attachBilingual(options: AttachOptions): AttachHandle {
     dispose() {
       disposed = true
       unsubscribePrefs()
+      unsubscribeLocale?.()
       observer?.disconnect()
       observer = undefined
       if (timer !== undefined) clearTimeout(timer)

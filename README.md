@@ -120,6 +120,15 @@ DSH 里打开「设置 → 思维链翻译」，可以：
 设置存在 `~/.dsh/cot-translate/settings.json`，改完立即生效（不等重启）。
 页面最下方显示版权信息：`© 2026 dsh-cot-translate contributors`、版本号与 MIT License。
 
+## 界面语言（i18n）
+
+插件界面跟随 DSH 的语言设置：内置 **简体中文 / English**，并额外提供
+**繁體中文 / 日本語 / 한국어 / Français / Deutsch / Español / Русский**。
+在「设置 → 通用 → 语言」里切换，设置页与思考块里的双语面板会立即换语言。
+
+想贡献翻译：直接编辑 `src/client/locales/<语言>.json`（key 以 `zh.json` 为准），
+跑 `npm run i18n:status` 看完成度；规则见 [docs/I18N.md](docs/I18N.md)。
+
 ## 本地模型（可选，但推荐）
 
 本地推理**不需要装 GUI 软件、不需要安装器**：用 llama.cpp 的免安装二进制 + 官方 GGUF。

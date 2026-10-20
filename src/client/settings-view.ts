@@ -14,7 +14,7 @@ import { createElement as h } from 'react'
 import type { ReactElement } from 'react'
 import { apiGet, apiPost } from './api'
 import type { Translate } from './cordis'
-import { fallbackTranslate } from './locales'
+import { formatNumber, localize, fallbackTranslate } from './locales'
 import { loadPrefs, setPrefs } from './prefs'
 
 /** host `/state` 的形状（只声明用到的字段）。 */
@@ -23,6 +23,7 @@ interface ModelStatusLike {
   label: string
   bundled: boolean
   note: string
+  noteKey?: string
   sizeMB: number
   installed: boolean
   bytes: number
@@ -85,6 +86,7 @@ interface SelfTestLike {
   ms: number
   perSegmentMs: number
   segments: number
+  errorCode?: 'all-unavailable' | 'failed'
   error?: string
 }
 
@@ -94,6 +96,8 @@ declare const __COTX_VERSION__: string
 export interface SettingsSectionProps {
   /** 宿主的本地化函数（注册时声明了 locale 才有）。 */
   t?: Translate
+  /** 订阅界面语言变化（让设置页在切换语言后立即重渲染）。 */
+  subscribeLocale?: (callback: () => void) => () => void
 }
 
 /** 按大小显示（MB / GB）。 */
@@ -109,10 +113,11 @@ function percent(state: DownloadStateLike | undefined): number {
 
 /** 字节数 → 人类可读（KB / MB / GB）。 */
 function bytesText(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-  if (bytes < 1024 * 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`
-  return `${(bytes / 1024 / 1024 / 1024).toFixed(2)} GB`
+  const oneDecimal = { minimumFractionDigits: 1, maximumFractionDigits: 1 }
+  if (bytes < 1024) return `${formatNumber(bytes)} B`
+  if (bytes < 1024 * 1024) return `${formatNumber(bytes / 1024, oneDecimal)} KB`
+  if (bytes < 1024 * 1024 * 1024) return `${formatNumber(bytes / 1024 / 1024, oneDecimal)} MB`
+  return `${formatNumber(bytes / 1024 / 1024 / 1024, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} GB`
 }
 
 /** 设置页组件。 */
@@ -123,6 +128,8 @@ export function SettingsSection(props: SettingsSectionProps): ReactElement {
   const [busy, setBusy] = useState<string>('')
   const [test, setTest] = useState<SelfTestLike | null>(null)
   const [portDraft, setPortDraft] = useState<string>('')
+  // 语言切换时强制重渲染（t 是按当前 locale 动态解析的）
+  const [, setLocaleTick] = useState(0)
   const [portStatus, setPortStatus] = useState<PortStatusLike | null>(null)
   const polling = useRef<ReturnType<typeof setInterval> | undefined>(undefined)
 
@@ -213,6 +220,13 @@ export function SettingsSection(props: SettingsSectionProps): ReactElement {
     },
     [],
   )
+
+  useEffect(() => {
+    const unsubscribe = props.subscribeLocale?.(() => {
+      setLocaleTick((tick) => tick + 1)
+    })
+    return unsubscribe
+  }, [props.subscribeLocale])
 
   const checkPort = useCallback(async (port: number) => {
     try {
@@ -327,7 +341,7 @@ export function SettingsSection(props: SettingsSectionProps): ReactElement {
         'div',
         { className: 'cotx-set-model-main' },
         h('div', { className: 'cotx-set-model-name' }, model.label, model.bundled ? h('span', { className: 'cotx-set-badge' }, tr('set.bundled')) : null),
-        h('div', { className: 'cotx-set-hint' }, model.note),
+        h('div', { className: 'cotx-set-hint' }, localize(tr, model.noteKey, model.note)),
         h(
           'div',
           { className: 'cotx-set-hint' },
@@ -596,10 +610,14 @@ export function SettingsSection(props: SettingsSectionProps): ReactElement {
             { className: test.ok ? 'cotx-set-ok' : 'cotx-set-bad' },
             test.ok
               ? tr('set.selftestResult', {
-                  api: test.provider,
+                  api: localize(tr, `provider.${test.provider}`, test.provider),
                   ms: test.perSegmentMs,
                 })
-              : `${tr('set.selftestFailed')}: ${test.error ?? ''}`,
+              : `${tr('set.selftestFailed')}: ${
+                  test.errorCode === 'all-unavailable'
+                    ? tr('set.selftestAllUnavailable')
+                    : (test.error ?? '')
+                }`,
           ),
     ),
   )
@@ -671,7 +689,13 @@ export function SettingsSection(props: SettingsSectionProps): ReactElement {
     cacheRow,
     portRow,
     testRow,
-    h('p', { className: 'cotx-set-hint' }, `${tr('set.chain')}: ${state.chain.join(' → ')}`),
+    h(
+      'p',
+      { className: 'cotx-set-hint' },
+      `${tr('set.chain')}: ${state.chain
+        .map((id) => localize(tr, `provider.${id}`, id))
+        .join(' → ')}`,
+    ),
     footer,
   )
 }

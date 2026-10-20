@@ -97,6 +97,15 @@
 - ✅ 端口可配置：默认 28457（避开常见端口），设置页可改 + 端口状态探测（空闲/在用/被占用）
 
 **验收**：改设置立即生效并持久化；切换模型后第一次翻译用新模型；自带模型不可删除。✅
+## M4.5 多语言（i18n）✅（2026-10-20）
+
+- ✅ 字典改为 `src/client/locales/<locale>.json`，zh 权威 / en 完整 / 其余可渐进
+- ✅ host 只返回 key（`labelKey`/`noteKey`/`errorCode`），客户端按语言渲染
+- ✅ 额外 UI 语言注册：zh-Hant、ja、ko、fr、de、es、ru（shell 语言设置里可选）
+- ✅ 语言切换即时生效（设置页重渲染 + 双语面板重建）；数字/容量用 Intl 格式化
+- ✅ `npm run i18n:status` + 测试校验 key 一致性与注册表；`docs/I18N.md` 翻译指南
+- ⬜ 各语言翻译文本由 agy 补齐（框架已就绪）
+
 ## M5 打包与安装 🟡（开发安装已跑通，发布流程未做）
 
 - ✅ `dsh plugin --profile web add <本仓库>` 可用：自动写入 `dependencies` 的 `link:` 与

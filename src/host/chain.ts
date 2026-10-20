@@ -183,6 +183,7 @@ export class Translator {
         id: provider.id,
         kind: provider.kind,
         label: provider.label,
+        ...(provider.labelKey === undefined ? {} : { labelKey: provider.labelKey }),
         ...(provider.model === undefined ? {} : { model: provider.model }),
         enabled: true,
         available: probe.available,

@@ -860,3 +860,39 @@ test('目标语言未初始化：不拼空提示词（回退 zh-Hans）', withTe
   const system2 = body.messages.find((message) => message.role === 'system').content
   assert.match(system2, /Simplified Chinese/)
 }))
+test('i18n：host 只给 key/枚举，展示文案由客户端翻译', withTempHome(async () => {
+  // 模型目录带 noteKey（客户端据此本地化）
+  for (const entry of host.MODEL_CATALOG) {
+    assert.match(entry.noteKey, /^model\.note\./, `${entry.id} 应有 noteKey`)
+    assert.equal(/[\u4e00-\u9fff]/.test(entry.note), false, `${entry.id} 的 note 应是英文后备`)
+  }
+  assert.equal(host.listModels()[0].noteKey, 'model.note.bundled')
+
+  // provider 状态带 labelKey
+  const translator = new host.Translator({
+    config: host.normalizeConfig({
+      chain: ['ollama'],
+      google: { enabled: false },
+      ollama: { enabled: true, model: 'm', autostart: false },
+    }),
+    fetchImpl: fakeFetch(() => jsonResponse({ models: [{ name: 'm' }] })),
+  })
+  const states = await translator.providerStates()
+  assert.equal(states[0].labelKey, 'provider.ollama')
+  assert.equal(/[\u4e00-\u9fff]/.test(states[0].label), false, 'label 应是英文规范名')
+
+  // 自测失败给稳定错误码（客户端按语言显示）
+  const failing = new host.Control({
+    staticConfig: {
+      chain: ['ollama'],
+      google: { enabled: false },
+      ollama: { enabled: true, baseURL: 'http://127.0.0.1:1', model: 'm', autostart: false },
+    },
+    fetchImpl: fakeFetch(() => {
+      throw new Error('offline')
+    }),
+  })
+  const result = await failing.selftest()
+  assert.equal(result.ok, false)
+  assert.equal(result.errorCode, 'all-unavailable')
+}))

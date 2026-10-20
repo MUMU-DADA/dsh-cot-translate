@@ -45,7 +45,8 @@ export function createSessionModelProvider(hooks: SessionModelHooks): TranslateP
   return {
     id: 'session',
     kind: 'session' as ProviderKind,
-    label: '当前对话的 API 模型',
+    label: 'Conversation API model',
+    labelKey: 'provider.session',
     async translate(segments, target, signal, _fetchImpl: FetchLike, context?: TranslateContext) {
       const route = hooks.resolveRoute(context?.sessionId)
       if (route === undefined) {

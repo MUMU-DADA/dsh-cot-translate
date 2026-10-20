@@ -65,6 +65,12 @@
   - `llamacpp.{baseURL,bin,modelPath,gpuLayers,ctxSize,autostart,enabled}`
   - `ollama.{baseURL,model,keepAlive,autostart,bin,enabled}`（可选）、`google.{endpoint,enabled}`
   - 写错的值一律回退默认，插件不会因配置语法挂不上
+- **i18n**（ADR-022）
+  - 字典：`src/client/locales/<locale>.json`，`zh.json` 权威、`en.json` 必须一致；
+  - shell 只自带 zh/en，其余语言用 `ctx.locale.addLanguage()` 注册（fallback 链到 en）；
+  - host 只返回 `labelKey` / `noteKey` / `errorCode`，客户端渲染；切换语言即时刷新
+    （订阅 `locale/change`，面板重建、设置页重渲染）；
+  - 数字/容量用 `Intl.NumberFormat(当前语言)`；`npm run i18n:status` 看翻译进度。
 - **缓存**（三层：磁盘 → 内存 → provider）
   - 磁盘：`~/.dsh/cot-translate/cache/`，键 `sha256(target+原文)`，文件只存译文；
     上限 50MB，超限按 mtime 淘汰最旧；启动扫目录建索引（ADR-019）

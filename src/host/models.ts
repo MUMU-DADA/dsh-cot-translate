@@ -36,7 +36,10 @@ export interface ModelEntry {
   sizeMB: number
   /** 随插件分发、不可删除、作为兜底。 */
   bundled: boolean
+  /** 英文后备说明（客户端本地化失败时用）。 */
   note: string
+  /** 说明文案的 i18n key（`model.note.*`）。 */
+  noteKey: string
   /** 模型许可证（展示用，下载页/设置页显示）。 */
   license: string
   /** 版权归属（展示用）。 */
@@ -57,7 +60,8 @@ export const MODEL_CATALOG: readonly ModelEntry[] = [
     url: `${HF_18B}/Hy-MT2-1.8B-Q4_K_M.gguf`,
     sizeMB: 1080.6,
     bundled: true,
-    note: '插件自带 · 兜底模型（不可删除）；最快，显存约 1.5GB',
+    note: 'Bundled fallback model (cannot delete); fastest, ~1.5 GB VRAM',
+    noteKey: 'model.note.bundled',
     license: 'Apache-2.0',
     copyright: '© Tencent Hunyuan',
     source: 'tencent/Hy-MT2-1.8B-GGUF',
@@ -69,7 +73,8 @@ export const MODEL_CATALOG: readonly ModelEntry[] = [
     url: `${HF_18B}/Hy-MT2-1.8B-Q8_0.gguf`,
     sizeMB: 1820.1,
     bundled: false,
-    note: '精度更高一点，显存约 2.3GB，速度略慢',
+    note: 'Higher precision, ~2.3 GB VRAM, a bit slower',
+    noteKey: 'model.note.q8',
     license: 'Apache-2.0',
     copyright: '© Tencent Hunyuan',
     source: 'tencent/Hy-MT2-1.8B-GGUF',
@@ -81,7 +86,8 @@ export const MODEL_CATALOG: readonly ModelEntry[] = [
     url: `${HF_7B}/Hy-MT2-7B-Q4_K_M.gguf`,
     sizeMB: 4410.4,
     bundled: false,
-    note: '质量最好，显存约 4.5GB，速度约为 1.8B 的 1/3–1/5',
+    note: 'Best quality, ~4.5 GB VRAM, 3–5× slower than 1.8B',
+    noteKey: 'model.note.7b',
     license: 'Apache-2.0',
     copyright: '© Tencent Hunyuan',
     source: 'tencent/Hy-MT2-7B-GGUF',
@@ -129,6 +135,8 @@ export interface ModelStatus {
   bytes: number
   /** 下载地址（UI 不展示，仅本地排障用）。 */
   url: string
+  /** 说明的 i18n key（客户端本地化用）。 */
+  noteKey: string
   /** 许可证（设置页展示，如 Apache-2.0）。 */
   license: string
   /** 版权归属。 */
@@ -151,6 +159,7 @@ export function listModels(): ModelStatus[] {
       installed,
       bytes: installed ? statSync(path).size : 0,
       url: entry.url,
+      noteKey: entry.noteKey,
       license: entry.license,
       copyright: entry.copyright,
       source: entry.source,

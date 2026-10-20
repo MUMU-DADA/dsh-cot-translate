@@ -14,7 +14,7 @@
 import { attachBilingual } from './attach'
 import type { AssistantStepData } from './chat'
 import type { ClientContext } from './cordis'
-import { LOCALES } from './locales'
+import { LOCALE_PACKS, LOCALES } from './locales'
 import { ensureTargetLanguage, loadPrefs, onPrefs } from './prefs'
 import { SettingsSection } from './settings-view'
 import { installStyles } from './styles'
@@ -59,6 +59,43 @@ export function apply(ctx: ClientContext): void {
   ctx.effect(() => ctx.locale.register(name, LOCALES), `${name}: dictionaries`)
   ctx.effect(installStyles, `${name}: styles`)
 
+  // 插件额外提供的 UI 语言（shell 只自带 zh / en；这些会出现在语言选择器里）。
+  ctx.effect(() => {
+    const disposers: Array<() => void> = []
+    for (const pack of LOCALE_PACKS) {
+      try {
+        disposers.push(
+          ctx.locale.addLanguage({
+            id: pack.id,
+            label: pack.label,
+            fallback: pack.fallback ?? 'en',
+          }),
+        )
+      } catch {
+        // 语言已被别的插件注册 / 宿主不支持：跳过，不影响其它功能
+      }
+    }
+    return () => {
+      for (const dispose of disposers) dispose()
+    }
+  }, `${name}: languages`)
+
+  // 界面语言变化：设置页和双语面板都要立刻换文案（不重启、不刷新）。
+  const subscribeLocale = (callback: () => void): (() => void) => {
+    try {
+      if (typeof ctx.on === 'function') return ctx.on('locale/change', callback)
+    } catch {
+      // 事件不可用：退回观察 <html lang>
+    }
+    if (typeof document === 'undefined') return () => {}
+    const observer = new MutationObserver(callback)
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ['lang'],
+    })
+    return () => observer.disconnect()
+  }
+
   // 设置页：DSH「设置」里多一个「思维链翻译」页。
   const t = ctx.locale.bind(name)
   ctx.slots.inject('settings.section', () =>
@@ -69,7 +106,7 @@ export function apply(ctx: ClientContext): void {
         order: 50,
         locale: name,
         label: () => t('set.title'),
-        inject: () => ({ t }),
+        inject: () => ({ t, subscribeLocale }),
       },
       SettingsSection,
     ),
@@ -96,6 +133,7 @@ export function apply(ctx: ClientContext): void {
       translator: sharedTranslator(),
       t,
       lookup: (sessionId, nodeKey, rowIndex) => reasoningTextAt(ctx, sessionId, nodeKey, rowIndex),
+      subscribeLocale,
     })
     return () => handle.dispose()
   }, `${name}: bilingual attach`)
@@ -105,7 +143,14 @@ export function apply(ctx: ClientContext): void {
 export { attachBilingual } from './attach'
 export { createBilingualPanel } from './bilingual'
 export { collectReasoning, reasoningCharCount, singleLinePreview } from './chat'
-export { LOCALES, fallbackTranslate } from './locales'
+export {
+  LOCALES,
+  LOCALE_PACKS,
+  currentLocale,
+  fallbackTranslate,
+  formatNumber,
+  localize,
+} from './locales'
 export {
   DEFAULT_PREFS,
   detectTargetLanguage,

@@ -44,6 +44,8 @@ export interface TranslateProvider {
   id: string
   kind: ProviderKind
   label: string
+  /** 客户端本地化用的文案 key（`provider.<id>`）。 */
+  labelKey?: string
   /** 本地模型名（远程 provider 没有）。 */
   model?: string
   /**
@@ -249,7 +251,8 @@ export function createLlamaCppProvider(
   return {
     id: 'llamacpp',
     kind: 'llamacpp',
-    label: '本地 Hy-MT2（llama.cpp）',
+    label: 'Local Hy-MT2 (llama.cpp)',
+    labelKey: 'provider.llamacpp',
     model: currentModel(),
     async translate(segments, target, signal, fetchImpl) {
       if (config.autostart) {
@@ -356,7 +359,8 @@ export function createOllamaProvider(
   return {
     id: 'ollama',
     kind: 'ollama',
-    label: '本地 Hy-MT2（Ollama）',
+    label: 'Local Hy-MT2 (Ollama)',
+    labelKey: 'provider.ollama',
     model: config.model,
     async translate(segments, target, signal, fetchImpl) {
       // 服务没起来时先按需拉起（无 GUI 的后台进程），再翻译。
@@ -420,7 +424,8 @@ export function createGoogleProvider(config: CotConfig['google']): TranslateProv
   return {
     id: 'google',
     kind: 'google',
-    label: '免费 Google 翻译',
+    label: 'Free Google Translate',
+    labelKey: 'provider.google',
     async translate(segments, target, signal, fetchImpl) {
       const out: string[] = []
       const tl = googleTarget(target)

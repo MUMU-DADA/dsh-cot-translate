@@ -50,6 +50,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "pretest": "npm run build",
     "test": "node --test",
+    "i18n:status": "node scripts/i18n-status.mjs",
     "slots": "node scripts/dump-slots.mjs"
   },
   "engines": {

@@ -26,7 +26,8 @@ const STATE = {
       id: 'hy-mt2-1.8b-q4',
       label: 'Hy-MT2 1.8B Q4_K_M',
       bundled: true,
-      note: '插件自带 · 兜底模型（不可删除）；最快，显存约 1.5GB',
+      note: 'Bundled fallback model (cannot delete); fastest, ~1.5 GB VRAM',
+      noteKey: 'model.note.bundled',
       sizeMB: 1080.6,
       installed: true,
       bytes: 1133000000,
@@ -38,7 +39,8 @@ const STATE = {
       id: 'hy-mt2-7b-q4',
       label: 'Hy-MT2 7B Q4_K_M',
       bundled: false,
-      note: '质量最好，显存约 4.5GB',
+      note: 'Best quality, ~4.5 GB VRAM, 3–5× slower than 1.8B',
+      noteKey: 'model.note.7b',
       sizeMB: 4410.4,
       installed: false,
       bytes: 0,
@@ -131,7 +133,7 @@ test('设置页：挂载后渲染开关、时机、模型、端口、缓存与�
     assert.ok(text.includes('半自动'), '应有时机切换')
     assert.ok(text.includes('Hy-MT2 1.8B Q4_K_M'), '应列出模型')
     assert.ok(text.includes('下载'), '未安装模型应有下载按钮')
-    assert.ok(text.includes('llamacpp → google'), '应显示当前翻译链')
+    assert.ok(text.includes('本地 Hy-MT2（llama.cpp） → 免费 Google 翻译'), '应显示本地化后的翻译链')
     assert.ok(text.includes('3.0 MB / 50.0 MB'), '应显示缓存用量')
     assert.ok(text.includes('清理缓存'), '应有清理缓存按钮')
     assert.ok(text.includes('译文语言'), '应有目标语言选择')
@@ -144,12 +146,91 @@ test('设置页：挂载后渲染开关、时机、模型、端口、缓存与�
     assert.ok(text.includes('© Tencent Hunyuan'), '模型行应显示版权')
     assert.ok(text.includes('tencent/Hy-MT2-1.8B-GGUF'), '模型行应显示来源仓库')
     assert.ok(text.includes('第三方组件'), '底部应有第三方组件许可摘要')
+    // en 字典应覆盖同一批 key（i18n 完整性）
+    const zhKeys = Object.keys(client.LOCALES.zh).sort()
+    const enKeys = Object.keys(client.LOCALES.en).sort()
+    assert.deepEqual(enKeys, zhKeys, 'zh/en key 必须一致')
+    for (const pack of client.LOCALE_PACKS) {
+      assert.ok(client.LOCALES[pack.id] !== undefined, `${pack.id} 应有字典文件`)
+      for (const key of Object.keys(client.LOCALES[pack.id])) {
+        assert.ok(zhKeys.includes(key), `${pack.id} 出现未知 key: ${key}`)
+      }
+    }
   } finally {
     try {
       root.unmount()
     } catch {
       // 卸载失败不影响断言结果
     }
+    globalThis.window = previous.window
+    globalThis.document = previous.document
+    globalThis.fetch = previous.fetch
+    dom.window.close()
+  }
+})
+
+test('设置页：切到英文后渲染英文文案（i18n）', async () => {
+  const dom = new JSDOM('<!doctype html><html lang="en"><body><div id="root"></div></body></html>', {
+    pretendToBeVisual: true,
+  })
+  const previous = {
+    window: globalThis.window,
+    document: globalThis.document,
+    fetch: globalThis.fetch,
+  }
+  globalThis.window = dom.window
+  globalThis.document = dom.window.document
+  const fetchStub = async (url) => {
+    if (String(url).includes('/_cotx/port')) {
+      return { ok: true, status: 200, json: async () => ({ port: 28457, free: true, ours: false }) }
+    }
+    return { ok: true, status: 200, json: async () => STATE }
+  }
+  globalThis.fetch = fetchStub
+  dom.window.fetch = fetchStub
+  let root
+  try {
+    if (typeof dom.window.AbortSignal.timeout !== 'function') {
+      Object.defineProperty(dom.window.AbortSignal, 'timeout', {
+        value: () => new dom.window.AbortController().signal,
+        configurable: true,
+      })
+    }
+    let captured
+    dom.window.__ModuleLoader__ = { load(options) { captured = options } }
+    dom.window.eval(SOURCE)
+    const client = captured.factory(REQUIRE)
+    const en = client.LOCALES.en
+    const t = (key, params) => {
+      const template = en[key] ?? key
+      if (params === undefined) return template
+      return template.replace(/\{(\w+)\}/g, (_match, name) =>
+        params[name] === undefined ? `{${name}}` : String(params[name]),
+      )
+    }
+    const React = REQUIRE('react')
+    const { createRoot } = REQUIRE('react-dom/client')
+    root = createRoot(dom.window.document.getElementById('root'))
+    root.render(React.createElement(client.SettingsSection, { t }))
+    const container = dom.window.document.getElementById('root')
+    for (let attempt = 0; attempt < 80; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 0))
+      if (
+        container.textContent.includes('Local service port') &&
+        container.textContent.includes('Port is free')
+      ) {
+        break
+      }
+    }
+    const text = container.textContent
+    assert.ok(text.includes('Chain-of-thought translation'), '英文标题')
+    assert.ok(text.includes('Enable translation'), '英文开关')
+    assert.ok(text.includes('Local service port'), '英文端口设置')
+    assert.ok(text.includes('Translation cache'), '英文缓存标题')
+    assert.ok(text.includes('Bundled fallback model'), '英文模型说明（noteKey 本地化）')
+    assert.ok(text.includes('Local Hy-MT2 (llama.cpp)'), '英文 provider 名')
+  } finally {
+    try { root?.unmount() } catch {}
     globalThis.window = previous.window
     globalThis.document = previous.document
     globalThis.fetch = previous.fetch

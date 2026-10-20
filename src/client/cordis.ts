@@ -49,9 +49,14 @@ export interface SlotsService {
 }
 
 export interface LocaleService {
-  /** `dictionaries` 形如 `{ zh: {...}, en: {...} }`。 */
+  /** `dictionaries` 形如 `{ zh: {...}, en: {...}, ja: {...} }`。 */
   register(namespace: string, dictionaries: Record<string, Record<string, string>>): () => void
   bind(namespace: string): Translate
+  /**
+   * 往 shell 的语言目录里加一种可选语言（语言选择器里会出现）。
+   * `fallback` 必须已注册且最终回退到 en。
+   */
+  addLanguage(input: { id: string; label: string; fallback: string }): () => void
 }
 
 export interface SessionsService {
@@ -85,4 +90,6 @@ export interface ClientContext {
   uiConversation: UiConversationService
   /** 可选服务探测（本插件暂未使用，留作 M2 之后按需取用）。 */
   get?(name: string): unknown
+  /** 订阅 cordis 事件（如 `locale/change`），返回取消函数。 */
+  on?(event: string, listener: (...args: unknown[]) => void): () => void
 }

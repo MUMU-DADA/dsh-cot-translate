@@ -74,6 +74,8 @@ export interface SelfTestResult {
   /** 平均每段耗时（毫秒）。 */
   perSegmentMs: number
   segments: number
+  /** 给客户端本地化用的稳定错误码。 */
+  errorCode?: 'all-unavailable' | 'failed'
   error?: string
 }
 
@@ -265,7 +267,8 @@ export class Control {
           ms,
           perSegmentMs: Math.round(ms / SELF_TEST_SAMPLES.length),
           segments: SELF_TEST_SAMPLES.length,
-          error: '所有 provider 都不可用',
+          errorCode: 'all-unavailable',
+          error: 'all providers unavailable',
         }
       }
       return {
@@ -283,6 +286,7 @@ export class Control {
         ms,
         perSegmentMs: ms,
         segments: SELF_TEST_SAMPLES.length,
+        errorCode: 'failed',
         error: error instanceof Error ? error.message : String(error),
       }
     }
