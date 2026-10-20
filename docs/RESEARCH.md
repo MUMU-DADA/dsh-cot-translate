@@ -24,25 +24,97 @@
 - React / React DOM / cordis / 部分 UI 库由 shell 的 `PLATFORM_MODULES` 统一提供，不打进 bundle；额外的走 `dsh.client.external`。
 - client bundle 只注册 factory，模块体在首次 materialize 时才执行（懒）。
 
-## 3. 聊天 UI 的扩展点（从 client bundle 提取的槽位名）
+## 3. 聊天 UI 的扩展点（2026-10-19 二轮核实）
 
-| 槽位 | 用途 |
-|---|---|
-| `conversation.chat.node` | **按节点 kind 注册渲染器**：`user` / `steering` / `context` / `turn-trigger` / `system-prompt` / `assistant-step` … |
-| `conversation.chat.turnTail` | 回合尾部（计划插件用它放“计划审阅”操作） |
-| `conversation.view` / `conversation.content` / `conversation.session` / `conversation.session.header` / `main.conversation` | 会话容器/头部 |
-| `conversation.composer.dock` / `conversation.composer.bar` / `conversation.input.dock` | 输入区扩展 |
-| `shell.overlay` | 全屏浮层（浮窗方案的落点） |
-| `settings.general.item` | 设置页条目（插件设置入口） |
-| `sidebar.right.pane.tab` / `sidebar.right.pane.tab.title` | 右侧面板 Tab |
+### 3.1 先看哪里：运行时自带一份「插件 API 目录」
 
-其它事实：
+`@deepseek-ai/dsh-cordis-client-runner/lib/client.js` 里有一份由源码类型生成的
+槽位目录（约 90 条），每条带 `kind` / `scope` / `summary` / `registerOptions` /
+`ownerProps`（owner 接口源码）/ `standardProps` / `keyDomain` / `declaredBy` /
+`occupants` / `replaceRisk` / `example`。**判断“某槽位能不能挂、挂了会怎样”，
+先查这份目录，比读 bundle 猜快得多。** 仓库里的 `scripts/dump-slots.mjs` 就是它的
+提取器（`npm run slots [关键词] [--json]`），DSH 升级后重跑即可刷新认知。
 
-- 聊天渲染把 reasoning 与回答用 `groupPart`（`reasoning` / `response`）区分。
-- 推理块由 `ReasoningRow` 渲染（可折叠，`text` 为思考全文），`AssistantMarkdown` 按 block.kind 分发。
-- `ChatNodeStore.turnDataSource` 允许“artifact 扩展按回合 + 节点 kind 订阅”，源包含 hidden 节点并按 anchor 顺序暴露业务数据 —— 这是拿 reasoning 文本的正路。
-- `conversation.chat.node` 的注册形如：`ctx.slots.inject('conversation.chat.node', () => ctx.slots.register({ name, key, locale }, Component))`。
-- **未确认**：同名 key 重复注册的语义（覆盖 / 叠加 / 报错），决定能否“内联在 Think 行下方”。ui-slots README 只提到 `ChainSelect` 按 priority 升序选第一个非 null。
+槽位名一览（与本项目相关的部分）：
+
+| 槽位 | kind | scope | 用途 |
+|---|---|---|---|
+| `conversation.chat.node` | keyed | session | **按节点 kind** 渲染一条 Chat 流条目 |
+| `conversation.chat.turnTail` | list | session | 已完成回合的操作行之前，产物扩展条目 |
+| `conversation.chat.assistant-actions` | list | session | 已落定 assistant 消息的操作 |
+| `conversation.view` | list | session | 会话视图（`chat` 就是其中一个） |
+| `shell.overlay` | list | root | 全屏浮层 |
+| `settings.general.item` | list | root | 设置页「通用」里的一行 |
+| `sidebar.right.pane.tab` / `.title` | keyed | session | 右侧面板 Tab |
+| `conversation.input.right` | list | session | 输入框工具行右侧按钮 |
+
+### 3.2 `conversation.chat.node` 是 keyed，且键域被 shell 固定 —— 不能追加
+
+- `kind: "keyed"`，`keyDomain` 原文：`fixed by the owner's key table { [Kind in ChatNodeKind]: { node: ChatNode<Kind> } }, already taken: assistant-step, command, …, user, …`。
+- `registerOptions.key` 的说明：*“Registering an already-occupied key replaces that occupant”*；`replaceRisk: "shadows-shipped-ui"`。
+- 派发点在 `ChatNodeSeat`：`renderSlot("conversation.chat.node", routedOwner, { entryKey: routedNode.kind, hookContext, fallback: JsonBlock })`。
+
+**结论**：想“在 Think 行下面追加一行译文”就得注册 `assistant-step`，那会把官方
+`AssistantNodeView`（reasoning 行 + markdown + 图片 + 折叠逻辑）整个换掉，属于
+shadow shipped UI。**不做。** 除非将来官方提供 reasoning 级别的子槽位或装饰器。
+
+### 3.3 拿 reasoning 文本的正路：`turnDataSource`
+
+- `MutableChatNodeStore` 公开方法：`get(key)`、`source(key)`、`processSource(key)`、
+  `turnDataSource(turn, kind)`、`turnKind(turn, kind)`、`replace(nodes)`、`upsert(nodes)`。
+- `turnDataSource(turn, kind)` → `SnapshotSource<readonly ChatNodeData[]>`，即
+  `{ getSnapshot(), subscribe(fn) }`；快照是该回合中该 kind 全部节点的 **`node.data`**
+  数组，**含隐藏节点**，按 `anchorSeq` 排序（README 明确“source includes hidden Nodes
+  and exposes their business data in anchor order”）。
+- 官方用法（`ui-plan` 的 `PlanCards`，同款产物扩展）：
+
+```js
+ctx.slots.register({
+  name: 'conversation.chat.turnTail', id: '@deepseek-ai/dsh-client-ui-plan', locale: NS,
+  inject: (sessionId) => {
+    const chat = ctx.uiConversation.binding(ctx.sessions.binding(sessionId)).target('chat')
+    return { keyedHooks: { plans: (turn) => chat.getSnapshot().nodes.turnDataSource(Number(turn), 'submitted-plan') } }
+  },
+}, PlanCards)   // 组件里：const plans = usePlans(String(turn.turn))
+```
+
+- `turnTail` 的 owner props：`{ turn: TurnLocation, seq: number, openFile }`；标准 props
+  含 `useChat` / `useConversation` / `sessionId` / `useProjection` 等；`inject` 返回的
+  `hooks` 直接成为组件 props，`keyedHooks` 变成“先传 key 再拿值的钩子”。
+- 注意 `turnTail` 只对**已完成回合**渲染（节点 kind 为 `turn-tail`），实时进行中的回合没有。
+
+### 3.4 assistant-step 的业务数据形状
+
+```ts
+interface AssistantStepData {
+  step?: number                 // 回合内第几次尝试
+  status?: 'running' | 'complete' | 'interrupted' | …
+  blocks?: Array<
+    | { kind: 'reasoning'; text: string }
+    | { kind: 'text'; text: string }
+    | { kind: 'tool-call'; callId: string; name: string; argsRaw: string }
+    | { kind: 'image'; attachment: unknown }
+    | { kind: 'other'; block: unknown }
+  >
+}
+```
+
+来源：`toAssistantBlock()` / `emptyAssistantBlock()`；`AssistantNodeView` 的
+`data.blocks` 再按 `groupPart`（`reasoning` / `response`）过滤后渲染。
+
+### 3.5 客户端插件契约（实测归纳）
+
+- 模块导出 `name` / `inject`（**cordis 服务名**数组）/ `apply(ctx)`；bundle 外壳仍是
+  `window.__ModuleLoader__.load({ id: 包名, factory })`。
+- `package.json` 的 `dsh.client`：`{ platform: 'web', inject: [包名…], external: [包名…],
+  immediately?: boolean }`；`dsh.client.inject` 是**包名**（加载顺序），`immediately`
+  让模块体在启动时执行（否则等到第一次被 import —— 纯槽位注册插件必须设为 `true`）。
+- host 半的 Loader 条目扫描 profile 里已启用包的 `dsh.client`，把 `./client` 导出
+  作为 `/plugins/<包名>/client.js` 提供给浏览器（`dsh-client-modules`），**插件不用自己造路由**。
+- `ctx.effect(() => disposer, 'label')` 注册随卸载清理的副作用；`ctx.locale.register(ns, { zh, en })`；
+  `ctx.locale.bind(ns)` 取 `t`；`ctx.slots.inject(name, () => ctx.slots.register(opts, Component))`
+  等槽位声明后再注册（返回 disposer）。
+- 样式没有构建期 CSS 通道：运行时 `document.createElement('style')` 注入，`ctx.effect` 里移除。
 
 ## 4. 参考实现：`dsh-think-translate` 1.2.12
 
@@ -87,8 +159,15 @@ Ollama 现成标签（已核实）：
 
 ## 8. 待办调研
 
-1. `ChatNodeStore` / `turnDataSource` 的公开 API 形状（读节点、订阅增量、hidden 节点）。
-2. `conversation.chat.node` 同名 key 的注册语义 → 决定内联还是浮层。
-3. 0.2.0-rc.2 下 client 插件能否注册 `settings.general.item`（设置页条目）。
-4. Ollama 在本机由插件拉起的可行性（第三方 README 称支持 Windows 自动安装），以及 `OLLAMA_KEEP_ALIVE` 的暴露方式。
-5. 是否需要 `dsh.client.external`（若用到 ui-primitives 之外的非基线模块）。
+已核实（2026-10-19 二轮，见 §3）：
+
+- ✅ `ChatNodeStore.turnDataSource(turn, kind)` 形状与语义；runner 内置槽位目录可查。
+- ✅ `conversation.chat.node` 是 keyed 且**替换语义**（`replaceRisk: shadows-shipped-ui`）→ 不内联，见 ADR-011。
+
+仍待确认：
+
+1. `settings.general.item` 条目的注册参数与 `store: defineStore(...)` 用法（M4 设置页要用）。
+2. `shell.overlay` 浮层的定位/层级约定，以及“跟随某条 Think 行”是否可行（M1b 实时方案）。
+3. Ollama 在本机由插件拉起的可行性（第三方 README 称支持 Windows 自动安装），以及 `OLLAMA_KEEP_ALIVE` 的暴露方式。
+4. 是否需要 `dsh.client.external`：目前只 require `react`（基线模块），暂不需要；一旦用
+   `@deepseek-ai/dsh-client-ui-primitives` / `dsh-client-store` 再补声明。

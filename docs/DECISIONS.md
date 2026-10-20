@@ -126,12 +126,35 @@
 
 **理由**：用户的痛点是“看不懂英文思考”；回答通常已经是中文，重复翻译反而增加成本与噪音。
 
+## ADR-011 译文落在「回合尾部卡片」，不替换 assistant-step 渲染器
+
+**背景**：M1 要确定译文画在哪。原计划「内联在 Think 行下方」（ROADMAP M1），前提是 `conversation.chat.node` 允许同名 key 叠加。
+
+**决策**：用 `conversation.chat.turnTail`（list 槽位）注册「回合译文卡片」；**不**替换 `conversation.chat.node` 的 `assistant-step`。
+
+**事实依据**（0.2.0-rc.2 实测，见 RESEARCH §3.2 / §3.3）
+
+- `conversation.chat.node` 是 keyed，键域被 `ChatNodeKind` 固定，`assistant-step` 已被 ui-chat 的 `AssistantNodeView` 占用；注册同名 key 是**替换**，目录里标 `replaceRisk: "shadows-shipped-ui"`。
+- 没有 reasoning 级别的子槽位或装饰器；`turnTail` 是官方留给产物扩展的位置（ui-plan / ui-deliverables / ui-schedule 都在用），且能通过 `ChatNodeStore.turnDataSource(turn, "assistant-step")` 读到**含隐藏节点**的 reasoning 数据。
+
+**备选与放弃原因**
+
+- 替换 `assistant-step`：要重写 reasoning 行、markdown、图片、折叠与 turnProcess 投影 —— 等于分叉 shell 渲染器，DSH 一升级就碎。
+- `shell.overlay` 浮层跟随 Think 行：视觉上最接近“叠加”，但依赖 DOM 定位与观察，脆弱；留作 M1b 的实时形态单独评估。
+- `sidebar.right.pane.tab` 右侧面板：适合“整段会话译文视图”，不适合“每条思考旁边”；留到 M4 之后再评估。
+
+**后果**
+
+- 优点：零侵入、升级安全；能拿到完整 reasoning（含隐藏节点）；list 槽位条目返回 null 即不占位，没有推理的回合什么都不显示。
+- 缺点：**`turnTail` 只在回合完成后渲染**，进行中的回合没有译文 —— “实时”要等 M1b 的浮层/面板形态。
+
 ---
 
 ## 开放问题
 
-1. **内联渲染是否可行**：`conversation.chat.node` 按节点 kind 注册渲染器，同名 key 重复注册是覆盖、叠加还是报错，尚未确认。若不能内联，退化为回合尾部（`conversation.chat.turnTail`）、浮层（`shell.overlay`）或右侧面板（`sidebar.right.pane.tab`）。
-2. **ChatNodeStore / turnDataSource 的公开 API 形状**：需要读节点、订阅增量、拿 hidden 节点的业务数据。
-3. **默认本地推理后端**：Ollama（自带模型管理与空闲卸载，插件可拉起）还是 llama.cpp server（更轻、无后台服务）。倾向 Ollama。
-4. **是否支持远程 provider 作为中间档**：例如本机局域网内的聚合 API 网关里挑便宜模型，作为本地不可用时的第二档。
-5. **许可证**：暂定 MIT（与参考项目一致），发布前确认。
+1. ~~**内联渲染是否可行**~~ → 已答：不可行（keyed + 替换语义），见 ADR-011。
+2. ~~**ChatNodeStore / turnDataSource 的公开 API 形状**~~ → 已答：`turnDataSource(turn, kind) => { getSnapshot, subscribe }`，含隐藏节点，见 RESEARCH §3.3。
+3. **实时形态（M1b）**：`shell.overlay` 浮层跟随当前回合，还是 `sidebar.right.pane.tab` 右侧译文面板。前者更接近“叠加显示”，后者更稳。
+4. **默认本地推理后端**：Ollama（自带模型管理与空闲卸载，插件可拉起）还是 llama.cpp server（更轻、无后台服务）。倾向 Ollama。
+5. **是否支持远程 provider 作为中间档**：例如本机局域网内的聚合 API 网关里挑便宜模型，作为本地不可用时的第二档。
+6. **许可证**：暂定 MIT（与参考项目一致），发布前确认。

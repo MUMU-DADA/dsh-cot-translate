@@ -19,8 +19,19 @@
 ```powershell
 npm run build      # host ESM + client bundle
 npm run typecheck
-npm test
+npm test           # pretest 自动 build；直接加载 lib/client.js 做冒烟
 ```
+
+## 关键约束（0.2.0-rc.2 实测，2026-10-19）
+
+- `conversation.chat.node` 是 **keyed** 槽位，键域被 `ChatNodeKind` 固定；注册 `assistant-step`
+  等于**替换**官方渲染器（shadow shipped ui）。译文因此走 `conversation.chat.turnTail`
+  （见 DECISIONS ADR-011），不要为了“内联一行”去替换节点渲染器。
+- 拿 reasoning 文本用 `ChatNodeStore.turnDataSource(turn, "assistant-step")`，返回
+  `{ getSnapshot, subscribe }`，快照是含隐藏节点的节点业务数据数组。
+- 运行时自带槽位目录（`dsh-cordis-client-runner/lib/client.js`）；查“某槽位能不能挂、
+  挂了会怎样”先查它，提取方法见 `docs/RESEARCH.md` §3.1。
+- 纯槽位注册插件必须写 `dsh.client.immediately: true`，否则模块体不会在启动时执行。
 
 ## 兼容性提醒
 

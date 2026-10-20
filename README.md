@@ -2,7 +2,9 @@
 
 在 DeepSeek Harness（DSH）Web 界面里，把模型的**思维链（reasoning / chain-of-thought）实时翻译成中文**的显示层插件，优先使用**本地模型**（Ollama / llama.cpp），全部失败时回退免费在线源。
 
-> 状态：**0.0.0 骨架** —— 目录、构建脚本、决策记录已就绪，功能尚未实现。
+> 状态：**M1a** —— 数据链路打通：客户端已能通过 `ChatNodeStore.turnDataSource`
+> 读到含隐藏节点的 reasoning 文本，并以「回合译文卡片」形式渲染占位译文；
+> 真实翻译（host 半 + 本地模型）从 M2 开始。详见 [docs/ROADMAP.md](docs/ROADMAP.md)。
 > 目标运行时：DSH `0.2.0-rc.2` + cordis `4.0.4`（DSH Desktop 0.5.23 内置，实测读包版本）。
 
 ## 它要解决什么
@@ -35,11 +37,16 @@
 ```
 dsh-cot-translate/
 ├── src/
-│   ├── index.ts              # host 半：provider 适配 + 翻译 HTTP 接口（待实现）
+│   ├── index.ts              # host 半：provider 适配 + 翻译 HTTP 接口（M2）
 │   ├── shared.ts             # 两端共享类型
 │   └── client/
-│       ├── index.ts          # client 半：注册 UI、订阅思考节点（待实现）
+│       ├── index.ts          # client 半：注册 turnTail 条目、取 reasoning 数据
+│       ├── card.ts           # 回合译文卡片（M1 为占位文案）
+│       ├── chat.ts           # assistant-step 数据类型 + reasoning 抽取（纯函数）
+│       ├── cordis.ts         # 用到的 cordis 客户端契约（结构类型，不依赖运行时包）
+│       ├── styles.ts         # 运行时注入的卡片样式
 │       └── locales.ts        # 中英文案
+├── test/                     # node --test：加载构建产物做冒烟（pretest 自动 build）
 ├── scripts/                  # esbuild 打包脚本（client 走 __ModuleLoader__ 包装）
 ├── docs/                     # 决策 / 调研 / 架构 / 路线图
 ├── cordis.patch.yml          # 作为 bundle 安装时挂载 host 半的 patch
@@ -53,6 +60,7 @@ dsh-cot-translate/
 npm install
 npm run build        # 产出 lib/index.js（host ESM）与 lib/client.js（浏览器 bundle）
 npm run typecheck
+npm test             # pretest 会先 build；加载 lib/client.js 在假 DOM 上冒烟
 ```
 
 安装到 DSH profile（开发期）：

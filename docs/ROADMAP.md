@@ -10,13 +10,24 @@
 
 **验收**：`npm run build` 能产出 `lib/index.js` 与 `lib/client.js`（骨架代码可打包）。
 
-## M1 可行性 spike：拿到 reasoning 文本 + 确定渲染位置
+## M1a 可行性 spike：拿到 reasoning 文本 + 定下渲染位置 🟡（代码完成，待真机验收）
 
-- 验证 `ChatNodeStore` / `turnDataSource` 的公开 API（读节点、订阅增量、hidden 节点）
-- 验证 `conversation.chat.node` 同名 key 注册语义；不行就改用 `turnTail` / `shell.overlay`
-- 写一个最小 client 插件：在 Think 行附近渲染固定中文假译文
+- ✅ 核实 `ChatNodeStore.turnDataSource(turn, kind)`：返回可订阅源，含隐藏节点，按 anchor 顺序给业务数据
+- ✅ 核实 `conversation.chat.node` 同名 key 语义 = **替换**（keyed，`shadows-shipped-ui`）→ 不内联，见 DECISIONS ADR-011
+- ✅ 改用 `conversation.chat.turnTail` 注册回合译文卡片（`lib/client.js`，占位文案）
+- ✅ `test/client-card.test.mjs` 冒烟：bundle 外壳、apply 注册、hook 取数、卡片渲染 4 项全绿
+- ⬜ 装进 profile + 完整重启桌面端，在真实会话里验证
 
-**验收**：真实会话里，某条历史回合的思考块旁出现 `.cot-translation` 假译文；刷新后仍在。
+**验收**：真实会话里，已完成回合底部出现 `.cot-translation` 卡片，摘要显示 reasoning 段数与字数；刷新后仍在。
+
+## M1b 实时形态：让进行中的回合也有译文
+
+`turnTail` 只在回合完成后渲染。实时需要另一条订阅路径（`useChat` 快照或直接订阅节点源），落点二选一：
+
+- `shell.overlay` 浮层：贴着当前回合显示，最接近“叠加显示”，但要处理定位与滚动
+- `sidebar.right.pane.tab` 右侧译文面板：稳、可长时间阅读，但不是“旁边”
+
+**验收**：模型流式输出途中，界面上的中文译文随之分批出现；关闭后无残留。
 
 ## M2 host 翻译接口 + 本地 Ollama provider
 

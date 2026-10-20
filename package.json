@@ -29,7 +29,14 @@
       "patch": "./cordis.patch.yml"
     },
     "client": {
-      "platform": "web"
+      "platform": "web",
+      "immediately": true,
+      "inject": [
+        "@deepseek-ai/dsh-api-session-controller",
+        "@deepseek-ai/dsh-client-locale",
+        "@deepseek-ai/dsh-client-ui-conversation",
+        "@deepseek-ai/dsh-client-ui-chat"
+      ]
     }
   },
   "scripts": {
@@ -38,7 +45,9 @@
     "build:host": "node scripts/build-host.mjs",
     "build:client": "node scripts/build-client.mjs",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "test": "node --test"
+    "pretest": "npm run build",
+    "test": "node --test",
+    "slots": "node scripts/dump-slots.mjs"
   },
   "engines": {
     "node": "^22.19.0 || >=24"
