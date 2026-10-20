@@ -896,3 +896,99 @@ test('i18n：host 只给 key/枚举，展示文案由客户端翻译', withTempH
   assert.equal(result.ok, false)
   assert.equal(result.errorCode, 'all-unavailable')
 }))
+test('ensureLocalServer：服务退出后重新探活并自启（不缓存永久 ready）', async () => {
+  let healthy = false
+  let launches = 0
+  const fetchImpl = fakeFetch(() => (healthy ? jsonResponse({ status: 'ok' }) : jsonResponse({}, 503)))
+  const options = {
+    baseURL: 'http://127.0.0.1:29999',
+    probePath: '/health',
+    fetchImpl,
+    plan: () => ({ bin: 'fake-llama-server', args: [] }),
+    deps: {
+      launch: () => {
+        launches += 1
+        healthy = true
+        return 4242
+      },
+      sleep: async () => {},
+      waitMs: 500,
+    },
+  }
+  // 第一次：服务没起 → 拉起
+  assert.deepEqual(await host.ensureLocalServer(options), { started: true, ready: true })
+  assert.equal(launches, 1)
+  // 第二次：服务还在 → 探活成功，不重复拉起
+  assert.deepEqual(await host.ensureLocalServer(options), { started: false, ready: true })
+  assert.equal(launches, 1)
+  // 服务退出：探活失败 → 必须重新拉起，而不是返回缓存里的 ready
+  healthy = false
+  assert.deepEqual(await host.ensureLocalServer(options), { started: true, ready: true })
+  assert.equal(launches, 2)
+  // 拉不起来（没有 plan）时给 ready:false，而不是一直假装 ready
+  healthy = false
+  assert.deepEqual(
+    await host.ensureLocalServer({ ...options, plan: () => undefined }),
+    { started: false, ready: false },
+  )
+})
+
+test('registerRoutes：非法 / 超限请求体返回 400 / 413，且不触发控制方法', async () => {
+  const routes = []
+  const register = (route) => {
+    routes.push(route)
+    return () => {}
+  }
+  const calls = { restart: 0, clear: 0 }
+  const control = {
+    state: () => ({ cache: {} }),
+    update: () => ({}),
+    restart: () => {
+      calls.restart += 1
+      return {}
+    },
+    clearCache: () => {
+      calls.clear += 1
+      return {}
+    },
+    remove: () => ({}),
+    download: async () => {},
+    selftest: async () => ({}),
+    portStatus: async () => ({ free: true }),
+  }
+  const facade = {
+    translate: async () => ({ translations: [], provider: '' }),
+    providerStates: async () => [],
+    modelsList: async () => [],
+  }
+  host.registerRoutes({ register, facade, config: host.normalizeConfig({}), guard: () => false, control })
+  const find = (path) => routes.find((route) => route.path === path)
+
+  // 非法 JSON → 400，且不执行清缓存
+  const badBody = fakeResponse()
+  await find('/_cotx/cache/clear').handler(fakeRequest('POST', '{not json'), badBody)
+  assert.equal(badBody.statusCode, 400)
+  assert.equal(calls.clear, 0)
+
+  // 超过 64KB → 413，且不执行重启
+  const tooLarge = fakeResponse()
+  await find('/_cotx/restart').handler(fakeRequest('POST', 'x'.repeat(70_000)), tooLarge)
+  assert.equal(tooLarge.statusCode, 413)
+  assert.equal(calls.restart, 0)
+
+  // 数组/标量 JSON 也不是合法对象体 → 400
+  const arrayBody = fakeResponse()
+  await find('/_cotx/restart').handler(fakeRequest('POST', '[1,2]'), arrayBody)
+  assert.equal(arrayBody.statusCode, 400)
+  assert.equal(calls.restart, 0)
+
+  // 合法 JSON / 空体照常执行
+  const okBody = fakeResponse()
+  await find('/_cotx/restart').handler(fakeRequest('POST', '{"x":1}'), okBody)
+  assert.equal(okBody.statusCode, 200)
+  assert.equal(calls.restart, 1)
+  const emptyBody = fakeResponse()
+  await find('/_cotx/cache/clear').handler(fakeRequest('POST'), emptyBody)
+  assert.equal(emptyBody.statusCode, 200)
+  assert.equal(calls.clear, 1)
+})

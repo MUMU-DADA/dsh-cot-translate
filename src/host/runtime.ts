@@ -39,7 +39,6 @@ const READY_POLL_MS = 500
 const PROBE_TIMEOUT_MS = 1500
 
 /** 已确认可用 / 拉起中的服务（按 baseURL + 探测路径区分）。 */
-const readyServers = new Set<string>()
 const inflight = new Map<string, Promise<EnsureResult>>()
 
 /** 默认拉起方式：完全脱离父进程，不继承 stdio —— 无窗口、无 GUI。 */
@@ -62,8 +61,7 @@ const spawnedPids = new Map<string, number>()
 export function stopLocalServer(baseURL: string): void {
   const pid = spawnedPids.get(baseURL)
   spawnedPids.delete(baseURL)
-  readyServers.delete(`${baseURL}|/health`)
-  readyServers.delete(`${baseURL}|/api/tags`)
+
   if (pid === undefined) return
   try {
     process.kill(pid)
@@ -96,14 +94,11 @@ export async function ensureLocalServer(
   options: EnsureLocalServerOptions,
 ): Promise<EnsureResult> {
   const key = `${options.baseURL}|${options.probePath}`
-  if (readyServers.has(key)) return { started: false, ready: true }
+  // 不做“永久 ready”缓存：本地服务可能被用户/系统结束，必须每次先探活，
+  // 探活失败就允许重新拉起（只有并发请求用 inflight 去重）。
   const running = inflight.get(key)
   if (running !== undefined) return running
-  const task = runEnsure(options)
-    .then((result) => {
-      if (result.ready) readyServers.add(key)
-      return result
-    })
+  const task = runEnsure(options).then((result) => result)
     .finally(() => {
       inflight.delete(key)
     })
@@ -164,6 +159,9 @@ export function defaultLlamaServerBin(): string | undefined {
           'llama-server.exe',
         ]
       : [
+          // 与 README 一致：解压到 ~/tools/llama.cpp（含 build/bin 布局）
+          join(home, 'tools', 'llama.cpp', 'llama-server'),
+          join(home, 'tools', 'llama.cpp', 'build', 'bin', 'llama-server'),
           join(home, '.local', 'bin', 'llama-server'),
           '/usr/local/bin/llama-server',
           '/usr/bin/llama-server',

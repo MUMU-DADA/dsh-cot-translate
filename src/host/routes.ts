@@ -95,19 +95,25 @@ export async function readBoundedBody(req: IncomingMessage): Promise<string | nu
   return Buffer.concat(chunks, size).toString('utf8')
 }
 
-/** 解析 JSON 请求体；空体返回 {}。 */
-export async function readJsonBody(req: IncomingMessage): Promise<Record<string, unknown> | null> {
+/** 读取 JSON 对象体：区分“超限(413)”与“非法 JSON(400)”，空体视为 `{}`。 */
+export type BodyReadResult =
+  | { ok: true; value: Record<string, unknown> }
+  | { ok: false; status: 400 | 413; message: string }
+
+export async function readJsonObjectBody(req: IncomingMessage): Promise<BodyReadResult> {
   const text = await readBoundedBody(req)
-  if (text === null) return null
-  if (text.trim() === '') return {}
+  if (text === null) return { ok: false, status: 413, message: 'body too large' }
+  if (text.trim() === '') return { ok: true, value: {} }
+  let parsed: unknown
   try {
-    const parsed: unknown = JSON.parse(text)
-    return typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)
-      ? (parsed as Record<string, unknown>)
-      : null
+    parsed = JSON.parse(text)
   } catch {
-    return null
+    return { ok: false, status: 400, message: 'body is not JSON' }
   }
+  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+    return { ok: false, status: 400, message: 'body must be a JSON object' }
+  }
+  return { ok: true, value: parsed as Record<string, unknown> }
 }
 
 /**
@@ -200,8 +206,16 @@ export function registerRoutes(options: RouteOptions): Array<() => void> {
         path,
         handler: async (req, res) => {
           if (guard(req, res)) return
-          const body = (await readJsonBody(req)) ?? {}
-          await handler(req, res, body)
+          // 非法/超限请求体一律拒绝，绝不把 null 当 {} 传给控制方法（否则会误触发重启/清缓存）。
+          const body = await readJsonObjectBody(req)
+          if (!body.ok) {
+            sendJson(res, body.status, {
+              error: body.status === 413 ? 'too-large' : 'bad-request',
+              message: body.message,
+            })
+            return
+          }
+          await handler(req, res, body.value)
         },
       }),
     )
@@ -236,7 +250,6 @@ export function registerRoutes(options: RouteOptions): Array<() => void> {
       },
     }),
   )
-
   disposers.push(
     register({
       kind: 'exact',

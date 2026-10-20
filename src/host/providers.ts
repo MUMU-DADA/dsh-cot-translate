@@ -201,7 +201,6 @@ export async function mapConcurrent<T, R>(
 }
 
 /** 已确认可用的本地服务（baseURL + bin + fetch 实现），拉起过一次就不再重复。 */
-const runtimeReady = new Set<string>()
 let runtimeStarting: Promise<unknown> | undefined
 
 /**
@@ -328,8 +327,7 @@ async function ensureRuntimeOnce(
   fetchImpl: FetchLike,
   deps: RuntimeDeps | undefined,
 ): Promise<void> {
-  const key = `${config.baseURL}|${config.bin}`
-  if (runtimeReady.has(key)) return
+  // 不缓存“已就绪”：服务可能已经退出，ensureOllamaServer 每次都会先探活。
   if (runtimeStarting === undefined) {
     runtimeStarting = ensureOllamaServer({
       baseURL: config.baseURL,
@@ -337,9 +335,6 @@ async function ensureRuntimeOnce(
       fetchImpl,
       ...(deps === undefined ? {} : { deps }),
     })
-      .then((result) => {
-        if (result.ready) runtimeReady.add(key)
-      })
       .catch(() => {
         // 拉起失败不影响主流程：翻译会降级到下一档 provider。
       })
