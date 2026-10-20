@@ -37,6 +37,12 @@ export interface ModelEntry {
   /** 随插件分发、不可删除、作为兜底。 */
   bundled: boolean
   note: string
+  /** 模型许可证（展示用，下载页/设置页显示）。 */
+  license: string
+  /** 版权归属（展示用）。 */
+  copyright: string
+  /** 模型来源仓库（展示用）。 */
+  source: string
 }
 
 const HF_18B = 'https://huggingface.co/tencent/Hy-MT2-1.8B-GGUF/resolve/main'
@@ -52,6 +58,9 @@ export const MODEL_CATALOG: readonly ModelEntry[] = [
     sizeMB: 1080.6,
     bundled: true,
     note: '插件自带 · 兜底模型（不可删除）；最快，显存约 1.5GB',
+    license: 'Apache-2.0',
+    copyright: '© Tencent Hunyuan',
+    source: 'tencent/Hy-MT2-1.8B-GGUF',
   },
   {
     id: 'hy-mt2-1.8b-q8',
@@ -61,6 +70,9 @@ export const MODEL_CATALOG: readonly ModelEntry[] = [
     sizeMB: 1820.1,
     bundled: false,
     note: '精度更高一点，显存约 2.3GB，速度略慢',
+    license: 'Apache-2.0',
+    copyright: '© Tencent Hunyuan',
+    source: 'tencent/Hy-MT2-1.8B-GGUF',
   },
   {
     id: 'hy-mt2-7b-q4',
@@ -70,6 +82,9 @@ export const MODEL_CATALOG: readonly ModelEntry[] = [
     sizeMB: 4410.4,
     bundled: false,
     note: '质量最好，显存约 4.5GB，速度约为 1.8B 的 1/3–1/5',
+    license: 'Apache-2.0',
+    copyright: '© Tencent Hunyuan',
+    source: 'tencent/Hy-MT2-7B-GGUF',
   },
 ]
 
@@ -114,6 +129,12 @@ export interface ModelStatus {
   bytes: number
   /** 下载地址（UI 不展示，仅本地排障用）。 */
   url: string
+  /** 许可证（设置页展示，如 Apache-2.0）。 */
+  license: string
+  /** 版权归属。 */
+  copyright: string
+  /** 来源仓库。 */
+  source: string
 }
 
 /** 当前模型状态列表。 */
@@ -130,6 +151,9 @@ export function listModels(): ModelStatus[] {
       installed,
       bytes: installed ? statSync(path).size : 0,
       url: entry.url,
+      license: entry.license,
+      copyright: entry.copyright,
+      source: entry.source,
     }
   })
 }

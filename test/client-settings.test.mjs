@@ -30,6 +30,9 @@ const STATE = {
       sizeMB: 1080.6,
       installed: true,
       bytes: 1133000000,
+      license: 'Apache-2.0',
+      copyright: '© Tencent Hunyuan',
+      source: 'tencent/Hy-MT2-1.8B-GGUF',
     },
     {
       id: 'hy-mt2-7b-q4',
@@ -39,6 +42,9 @@ const STATE = {
       sizeMB: 4410.4,
       installed: false,
       bytes: 0,
+      license: 'Apache-2.0',
+      copyright: '© Tencent Hunyuan',
+      source: 'tencent/Hy-MT2-7B-GGUF',
     },
   ],
   download: [
@@ -134,6 +140,10 @@ test('设置页：挂载后渲染开关、时机、模型、端口、缓存与�
     assert.ok(text.includes('© 2026 dsh-cot-translate contributors'), '底部应有版权信息')
     assert.ok(text.includes('MIT License'), '底部应显示许可证')
     assert.ok(/v\d+\.\d+\.\d+/.test(text), '底部应显示版本号')
+    assert.ok(text.includes('Apache-2.0'), '模型行应显示许可证')
+    assert.ok(text.includes('© Tencent Hunyuan'), '模型行应显示版权')
+    assert.ok(text.includes('tencent/Hy-MT2-1.8B-GGUF'), '模型行应显示来源仓库')
+    assert.ok(text.includes('第三方组件'), '底部应有第三方组件许可摘要')
   } finally {
     try {
       root.unmount()

@@ -91,6 +91,8 @@
 - ✅ 多语言：设置页「译文语言」下拉，覆盖 Hy-MT2 支持的 33+ 种语言；提示词用完整英文语言名；
   默认跟随客户端语言（`<html lang>`）
 - ✅ 设置页底部版权信息：`© 2026 dsh-cot-translate contributors` + 版本号（构建时注入）+ MIT License
+- ✅ 可选模型带许可证信息（每个模型条目显示 `Apache-2.0 · © Tencent Hunyuan · 来源仓库`），
+  新增 `THIRD_PARTY_LICENSES.md`（Hy-MT2 模型 Apache-2.0、llama.cpp MIT）
 - ✅ 默认本地端口 8080 → 18099（实测 8080 被其他应用占用会导致静默降级到 Google）
 - ✅ 端口可配置：默认 28457（避开常见端口），设置页可改 + 端口状态探测（空闲/在用/被占用）
 

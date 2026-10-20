@@ -320,6 +320,9 @@
   - 半自动（默认）：只在用户展开思考块时翻（原来的行为）；
   - 自动：思考生成完成后就翻，折叠着的也翻 —— 用数据层取原文、按面板同样的段落切分
     预热客户端缓存，展开时直接命中缓存。
+- **许可证**：每个模型条目带 `license`/`copyright`/`source`（Hy-MT2 系列为 **Apache-2.0**，
+  © Tencent Hunyuan），设置页模型行直接显示；插件另发 `THIRD_PARTY_LICENSES.md` 汇总
+  模型与 llama.cpp（MIT）的版权/许可证。
 - **模型来源**分两类：
   - `bundled`：放在插件目录 `<插件根>/models/`，**不可删除**，作为兜底；
   - `preset`：HF 官方 GGUF（1.8B Q8_0 / 7B Q4_K_M），下载到 `~/.dsh/cot-translate/models/`，

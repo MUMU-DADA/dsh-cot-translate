@@ -59,8 +59,9 @@ const zh: NamespaceDictionary = {
   'set.copyright': '© 2026 dsh-cot-translate contributors',
   'set.version': 'v{version} · MIT License',
   'set.versionUnknown': 'MIT License',
+  'set.thirdParty': '第三方组件：Hy-MT2 模型（Apache-2.0，© Tencent Hunyuan）· llama.cpp（MIT）',
 
-  // ── 设置页：翻译缓存 ──────────────────────────────────────
+  // ── 设置页：服务端口与翻译缓存 ─────────────────────────────
   'set.port': '本地服务端口',
   'set.portHint': 'llama-server 监听的回环端口（1024–65535）。默认 28457，避开常见端口；改完下次翻译会按新端口重新拉起。',
   'set.portSave': '应用',
@@ -131,8 +132,10 @@ const en: NamespaceDictionary = {
   'set.copyright': '© 2026 dsh-cot-translate contributors',
   'set.version': 'v{version} · MIT License',
   'set.versionUnknown': 'MIT License',
+  'set.thirdParty':
+    'Third-party: Hy-MT2 models (Apache-2.0, © Tencent Hunyuan) · llama.cpp (MIT)',
 
-  // ── settings: translation cache ───────────────────────────
+  // ── settings: service port & translation cache ────────────
   'set.port': 'Local service port',
   'set.portHint':
     'Loopback port for llama-server (1024–65535). Default 28457, deliberately uncommon; the next translation restarts the server on the new port.',

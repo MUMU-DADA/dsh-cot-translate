@@ -26,6 +26,9 @@ interface ModelStatusLike {
   sizeMB: number
   installed: boolean
   bytes: number
+  license: string
+  copyright: string
+  source: string
 }
 
 interface DownloadStateLike {
@@ -328,6 +331,11 @@ export function SettingsSection(props: SettingsSectionProps): ReactElement {
         h(
           'div',
           { className: 'cotx-set-hint' },
+          `${model.license} · ${model.copyright} · ${model.source}`,
+        ),
+        h(
+          'div',
+          { className: 'cotx-set-hint' },
           model.installed
             ? `${tr('set.installed')} · ${(model.bytes / 1024 / 1024).toFixed(0)} MB`
             : `${tr('set.notInstalled')} · ${tr('set.aboutSize')} ${sizeText(model.sizeMB)}`,
@@ -607,6 +615,7 @@ export function SettingsSection(props: SettingsSectionProps): ReactElement {
         ? tr('set.version', { version: __COTX_VERSION__ })
         : tr('set.versionUnknown'),
     ),
+    h('div', { className: 'cotx-set-footer-sub' }, tr('set.thirdParty')),
   )
 
   return h(

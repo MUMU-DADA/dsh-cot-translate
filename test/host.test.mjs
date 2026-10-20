@@ -584,6 +584,14 @@ test('模型目录：下载 → 已安装 → 可删除；自带模型不可删'
   const status = host.listModels().find((model) => model.id === 'hy-mt2-1.8b-q8')
   assert.equal(status.installed, true)
   assert.equal(status.bytes, 9)
+  // 每个可下载/自带模型都必须带许可证信息（设置页要展示）
+  for (const model of host.MODEL_CATALOG) {
+    assert.equal(model.license, 'Apache-2.0', `${model.id} 应标注许可证`)
+    assert.match(model.copyright, /Tencent/, `${model.id} 应标注版权`)
+    assert.match(model.source, /^tencent\/Hy-MT2/, `${model.id} 应标注来源仓库`)
+  }
+  assert.equal(status.license, 'Apache-2.0')
+  assert.match(status.source, /Hy-MT2/)
   assert.equal(host.resolveModelPath('hy-mt2-1.8b-q8'), join(host.managedDir(), preset.file))
   assert.deepEqual(host.downloadStateOf('hy-mt2-1.8b-q8').phase, 'done')
 

@@ -150,6 +150,20 @@ curl -L -o "$env:USERPROFILE\models\Hy-MT2-1.8B-Q4_K_M.gguf" `
 
 没装本地模型时插件自动降级到免费 Google 接口；两者都不可用时显示原文（fail-open），
 界面不会报错。`GET /_cotx/providers` 可以看到每一档的实际可用性与当前模型名。
+## 许可证与第三方组件
+
+本插件本体是 **MIT**（见 [LICENSE](LICENSE)）。
+
+它使用/分发的第三方组件各有自己的许可证，完整说明见
+[THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md)：
+
+| 组件 | 版权 | 许可证 |
+|---|---|---|
+| Hy-MT2 翻译模型（自带兜底 + 可选下载） | © Tencent Hunyuan | **Apache-2.0** |
+| llama.cpp / llama-server（本地运行时，用户自行下载） | © ggml-org contributors | **MIT** |
+
+设置页里每个模型条目都会显示 `许可证 · 版权 · 来源仓库`，底部另有版权与第三方组件摘要。
+
 ## 参考
 
 - 官方实验插件：`@deepseek-ai/dsh-experimental-client-ui-cot-translation`（peer 要求 0.2.1 运行时，当前不可用）
@@ -159,4 +173,5 @@ curl -L -o "$env:USERPROFILE\models\Hy-MT2-1.8B-Q4_K_M.gguf" `
 
 ## License
 
-MIT
+[MIT](LICENSE) © dsh-cot-translate contributors · 第三方组件许可见
+[THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md)
