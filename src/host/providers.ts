@@ -164,6 +164,29 @@ function numPredictFor(text: string): number {
   return Math.min(1024, Math.max(128, Math.ceil(text.length * 2)))
 }
 
+/** 同时最多并发翻译几段（llama-server 默认 4 个 slot，留余量）。 */
+const MAX_PARALLEL_SEGMENTS = 2
+
+/** 并发执行且保留结果顺序（任何一段失败整体抛错，由链降级）。 */
+async function mapConcurrent<T, R>(
+  items: readonly T[],
+  limit: number,
+  run: (item: T, index: number) => Promise<R>,
+): Promise<R[]> {
+  const results: R[] = new Array(items.length)
+  let next = 0
+  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    for (;;) {
+      const index = next
+      next += 1
+      if (index >= items.length) return
+      results[index] = await run(items[index], index)
+    }
+  })
+  await Promise.all(workers)
+  return results
+}
+
 /** 已确认可用的本地服务（baseURL + bin + fetch 实现），拉起过一次就不再重复。 */
 const runtimeReady = new Set<string>()
 let runtimeStarting: Promise<unknown> | undefined
@@ -231,8 +254,8 @@ export function createLlamaCppProvider(
           // 拉起失败交给下面的请求失败 → 链降级。
         }
       }
-      const out: string[] = []
-      for (const text of segments) {
+      // 段与段之间并发（llama-server 有多个 slot），整批仍要全部成功。
+      return mapConcurrent(segments, MAX_PARALLEL_SEGMENTS, async (text) => {
         const response = await fetchImpl(`${base}/v1/chat/completions`, {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
@@ -254,10 +277,8 @@ export function createLlamaCppProvider(
         }
         const content = payload.choices?.[0]?.message?.content
         if (typeof content !== 'string') throw new Error('llamacpp: malformed response')
-        out.push(stripWrapping(content))
-      }
-      return out
-    },
+        return stripWrapping(content)
+      })    },
     async probe(signal, fetchImpl) {
       try {
         const response = await fetchImpl(`${base}/health`, { signal })
@@ -337,8 +358,7 @@ export function createOllamaProvider(
               throw new Error('ollama: no model pulled')
             })())
           : config.model
-      const out: string[] = []
-      for (const text of segments) {
+      return mapConcurrent(segments, MAX_PARALLEL_SEGMENTS, async (text) => {
         const body: Record<string, unknown> = {
           model,
           messages: translationMessages(text, target),
@@ -358,9 +378,8 @@ export function createOllamaProvider(
         const payload = (await response.json()) as { message?: { content?: unknown } }
         const content = payload.message?.content
         if (typeof content !== 'string') throw new Error('ollama: malformed response')
-        out.push(stripWrapping(content))
-      }
-      return out
+        return stripWrapping(content)
+      })
     },
     async probe(signal, fetchImpl) {
       try {

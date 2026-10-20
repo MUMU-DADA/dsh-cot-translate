@@ -4,6 +4,10 @@
  * 面板是**纯 DOM**（不用 React）：它被注入到 shell 自己渲染的思考块里，
  * 走自己的 DOM 生命周期，避免和 shell 的 React 树互相踩。
  *
+ * 出译文的节奏是**逐段**的：每个段落单独发一次翻译请求（最多 2 个并发），
+ * 谁先回来谁先显示 —— 不用等整段思考全部翻完。流式思考的尾巴仍然等它
+ * 稳定（`tailSettleMs`）再翻，避免每个 token 打一次模型。
+ *
  * 失败语义：单段翻译失败 → 右栏显示“翻译不可用”；纯代码段落 → 右栏显示
  * “技术内容，不翻译”（fail-open，原文永远在左栏）。
  */
@@ -11,7 +15,7 @@
 import type { Translate } from './cordis'
 import { fallbackTranslate } from './locales'
 import { isTechnicalOnly, normalizeMarkdownLite, paragraphsOf, renderSpansInto } from './text'
-import type { TextTranslator } from './translate'
+import type { TextTranslator, TranslateOutcome } from './translate'
 
 export interface BilingualPanelOptions {
   document: Document
@@ -43,7 +47,12 @@ interface Row {
   readonly dst: HTMLElement
   /** 本行当前对应的原文（去 Markdown 后的段落）。 */
   text: string
+  /** 文本版本：文本被改写就 +1，旧请求的结果据此丢弃。 */
+  version: number
 }
+
+/** 同时最多发几个段落请求（llama-server 默认有 4 个 slot）。 */
+const MAX_CONCURRENT_REQUESTS = 2
 
 /**
  * 创建面板（但尚未插入 DOM）。
@@ -78,8 +87,12 @@ export function createBilingualPanel(options: BilingualPanelOptions): BilingualP
 
   let rows: Row[] = []
   let lastText = ''
-  let token = 0
   let disposed = false
+
+  /** 等待发送的行；`active` 是正在飞的请求数。 */
+  const pending: Row[] = []
+  let active = 0
+
   /**
    * 运行中的思考块：最后一段还在增长，要等它**停止增长一小段时间**才送翻，
    * 否则每个 token 都会打一次模型。用定时器而不是“扫描轮数”，
@@ -89,13 +102,9 @@ export function createBilingualPanel(options: BilingualPanelOptions): BilingualP
   let tailTimer: ReturnType<typeof setTimeout> | undefined
   const tailSettleMs = options.tailSettleMs ?? 400
 
-  /** 延迟补翻：到点时最后一段仍没变才真的送翻。 */
-  const scheduleTailFlush = () => {
-    if (tailTimer !== undefined) return
-    tailTimer = setTimeout(() => {
-      tailTimer = undefined
-      if (!disposed) flushTail()
-    }, tailSettleMs)
+  const setCell = (row: Row, state: 'loading' | 'done' | 'failed' | 'technical', text: string) => {
+    row.dst.setAttribute('data-cot-state', state)
+    row.dst.textContent = text
   }
 
   /** 建一行（左右两栏），左栏先渲染原文。 */
@@ -116,48 +125,81 @@ export function createBilingualPanel(options: BilingualPanelOptions): BilingualP
     row.appendChild(src)
     row.appendChild(dst)
     rowsBox.appendChild(row)
-    return { root: row, src, dst, text }
+    return { root: row, src, dst, text, version: 0 }
   }
 
-  const setCell = (row: Row, state: 'loading' | 'done' | 'failed' | 'technical', text: string) => {
-    row.dst.setAttribute('data-cot-state', state)
-    row.dst.textContent = text
+  /** 铺结果：失败/纯技术/正常三种状态。 */
+  const applyOutcome = (row: Row, outcome: TranslateOutcome | undefined): void => {
+    if (outcome === undefined || !outcome.ok) {
+      setCell(row, 'failed', tr('bi.failed'))
+      return
+    }
+    if (outcome.provider === 'none') {
+      setCell(row, 'technical', tr('bi.technical'))
+      return
+    }
+    setCell(row, 'done', outcome.text)
   }
 
-  /** 只翻新增/变化的段落，其余保持原状（流式追加时尤其重要）。 */
-  const translateDirty = (dirty: number[]) => {
-    if (dirty.length === 0) return
-    const myToken = ++token
-    const texts = dirty.map((index) => rows[index].text)
+  /** 发一个段落请求；文本在飞的过程中被改写时丢弃旧结果。 */
+  const startRequest = (row: Row): void => {
+    const version = row.version
+    const text = row.text
+    active += 1
     translator
-      .translateMany(texts)
+      .translateMany([text])
       .then((outcomes) => {
-        if (disposed || myToken !== token) return
-        outcomes.forEach((outcome, offset) => {
-          const row = rows[dirty[offset]]
-          if (row === undefined) return
-          if (!outcome.ok) {
-            setCell(row, 'failed', tr('bi.failed'))
-            return
-          }
-          if (outcome.provider === 'none') {
-            setCell(row, 'technical', tr('bi.technical'))
-            return
-          }
-          setCell(row, 'done', outcome.text)
-        })
+        if (disposed || row.version !== version) return
+        applyOutcome(row, outcomes[0])
       })
       .catch(() => {
-        if (disposed || myToken !== token) return
-        for (const index of dirty) {
-          const row = rows[index]
-          if (row !== undefined) setCell(row, 'failed', tr('bi.failed'))
-        }
+        if (disposed || row.version !== version) return
+        setCell(row, 'failed', tr('bi.failed'))
       })
+      .finally(() => {
+        active -= 1
+        pump()
+      })
+  }
+
+  /** 从队列里按并发上限往外发。 */
+  const pump = (): void => {
+    while (!disposed && active < MAX_CONCURRENT_REQUESTS && pending.length > 0) {
+      const row = pending.shift()
+      if (row === undefined) continue
+      if (!row.root.isConnected) continue
+      startRequest(row)
+    }
+  }
+
+  /** 把若干行排进发送队列（已翻好的行跳过）。 */
+  const enqueue = (indexes: readonly number[]): void => {
+    for (const index of indexes) {
+      const row = rows[index]
+      if (row === undefined) continue
+      if (row.dst.getAttribute('data-cot-state') !== 'loading') continue
+      if (!pending.includes(row)) pending.push(row)
+    }
+    pump()
+  }
+
+  /** 该行若还在队列里就摘掉（文本变了要重新排队）。 */
+  const forgetPending = (row: Row): void => {
+    const index = pending.indexOf(row)
+    if (index >= 0) pending.splice(index, 1)
+  }
+
+  /** 延迟补翻：到点时最后一段仍没变才真的送翻。 */
+  const scheduleTailFlush = (): void => {
+    if (tailTimer !== undefined) return
+    tailTimer = setTimeout(() => {
+      tailTimer = undefined
+      if (!disposed) flushTail()
+    }, tailSettleMs)
   }
 
   /** 把被压住的最后一段补翻（若已稳定）。 */
-  const flushTail = () => {
+  const flushTail = (): void => {
     const tail = rows.length - 1
     if (tail < 0 || settledTail === undefined) {
       settledTail = undefined
@@ -169,17 +211,17 @@ export function createBilingualPanel(options: BilingualPanelOptions): BilingualP
       return
     }
     settledTail = undefined
-    translateDirty([tail])
+    enqueue([tail])
   }
 
   /** 取消待执行的尾巴补翻。 */
-  const cancelTailFlush = () => {
+  const cancelTailFlush = (): void => {
     if (tailTimer === undefined) return
     clearTimeout(tailTimer)
     tailTimer = undefined
   }
 
-  const update = (text: string, running = false) => {
+  const update = (text: string, running = false): void => {
     if (disposed) return
     if (text === lastText) {
       // 文本这一轮没变；运行中交给定时器判断“稳定”，停止流式则立刻补翻。
@@ -213,6 +255,8 @@ export function createBilingualPanel(options: BilingualPanelOptions): BilingualP
       }
       if (existing.text === paragraph) continue
       existing.text = paragraph
+      existing.version += 1
+      forgetPending(existing)
       renderSpansInto(doc, existing.src, paragraph)
       setCell(existing, 'loading', tr('bi.loading'))
       if (running && index === tailIndex) {
@@ -230,7 +274,7 @@ export function createBilingualPanel(options: BilingualPanelOptions): BilingualP
       rows = rows.slice(0, paragraphs.length)
     }
     if (settledTail !== undefined) scheduleTailFlush()
-    translateDirty(dirty)
+    enqueue(dirty)
   }
 
   return {
@@ -238,7 +282,7 @@ export function createBilingualPanel(options: BilingualPanelOptions): BilingualP
     update,
     dispose() {
       disposed = true
-      token += 1
+      pending.length = 0
       cancelTailFlush()
       root.remove()
     },

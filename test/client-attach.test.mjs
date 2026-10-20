@@ -203,6 +203,47 @@ test('数据层原文优先：围栏代码不被送出翻译', async (context) =
   assert.match(technical.textContent, /不翻译/)
 })
 
+test('逐段显示：第一段回来就先显示，不等其它段', async (context) => {
+  chatFixture({ text: 'First para.\n\nSecond para.' })
+  const resolvers = []
+  const translator = {
+    calls: [],
+    translateMany(texts) {
+      this.calls.push([...texts])
+      return new Promise((resolve) => {
+        resolvers.push({ texts, resolve })
+      })
+    },
+  }
+  const handle = client.attachBilingual({
+    document,
+    translator,
+    lookup: () => undefined,
+    throttleMs: 0,
+  })
+  context.after(() => handle.dispose())
+  handle.scan()
+  await flush()
+
+  assert.equal(resolvers.length, 2, '两段应各自成为一个独立请求（并发 2）')
+  const rows = () => Array.from(document.querySelectorAll('[data-cot-pair]'))
+
+  // 只完成第一段：第一行立刻出译文，第二行仍在“翻译中”。
+  resolvers[0].resolve([{ ok: true, text: '译:First para.', provider: 'llamacpp' }])
+  await flush()
+  assert.equal(rows()[0].querySelector('.cotx-bi-dst').textContent, '译:First para.')
+  assert.equal(
+    rows()[1].querySelector('.cotx-bi-dst').getAttribute('data-cot-state'),
+    'loading',
+    '第二段还没回来时不能显示译文',
+  )
+
+  // 第二段回来后再补上。
+  resolvers[1].resolve([{ ok: true, text: '译:Second para.', provider: 'llamacpp' }])
+  await flush()
+  assert.equal(rows()[1].querySelector('.cotx-bi-dst').textContent, '译:Second para.')
+})
+
 test('流式追加：只为新增段落发请求', async (context) => {
   chatFixture({ text: 'One.' })
   const translator = fakeTranslator()
