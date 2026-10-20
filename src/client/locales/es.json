@@ -30,6 +30,8 @@
   "set.downloadFailed": "Error en la descarga",
   "set.sessionModel": "Traducir con el modelo API de la conversación actual",
   "set.sessionModelHint": "Usa el modelo seleccionado en la conversación actual (más rápido y sin usar VRAM, pero consume llamadas a la API); el modelo local queda como respaldo.",
+  "set.allowOnline": "Permitir traducción en línea (Google)",
+  "set.allowOnlineHint": "Desactivado por defecto. Si se activa, el texto de razonamiento se envía al servicio gratuito de Google cuando el modelo local no está disponible; si se desactiva, la traducción es solo local y se muestra el original si falla.",
   "set.selftest": "Prueba de velocidad del modelo local",
   "set.selftestHint": "Ejecuta una muestra fija en la cadena de traducción actual e informa el tiempo medio por segmento.",
   "set.selftestStart": "Iniciar prueba",

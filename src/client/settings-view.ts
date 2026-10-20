@@ -45,6 +45,7 @@ interface SettingsLike {
   mode: 'semi' | 'auto'
   modelId: string
   useSessionModel: boolean
+  allowOnline: boolean
   target: string
 }
 
@@ -686,6 +687,9 @@ export function SettingsSection(props: SettingsSectionProps): ReactElement {
         },
       })),
     ),
+    toggleRow(tr('set.allowOnline'), settings.allowOnline === true, (value) => {
+      void patch({ allowOnline: value })
+    }, tr('set.allowOnlineHint')),
     cacheRow,
     portRow,
     testRow,

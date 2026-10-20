@@ -23,6 +23,8 @@ export interface CotSettings {
   modelId: string
   /** 用当前对话的 API 模型翻译（而不是本地模型） */
   useSessionModel: boolean
+  /** 允许本地失败后把原文发给 Google（默认关闭，隐私优先） */
+  allowOnline: boolean
   /** 目标语言（"" = 待客户端按自己的语言初始化） */
   target: string
   /** 本地 llama-server 的端口（可在设置页调整） */
@@ -42,6 +44,7 @@ export const DEFAULT_SETTINGS: CotSettings = {
   mode: 'semi',
   modelId: 'hy-mt2-1.8b-q4',
   useSessionModel: false,
+  allowOnline: false,
   target: '',
   localPort: DEFAULT_LOCAL_PORT,
 }
@@ -88,6 +91,10 @@ export function normalizeSettings(raw: unknown): CotSettings {
       typeof source.useSessionModel === 'boolean'
         ? source.useSessionModel
         : DEFAULT_SETTINGS.useSessionModel,
+    allowOnline:
+      typeof source.allowOnline === 'boolean'
+        ? source.allowOnline
+        : DEFAULT_SETTINGS.allowOnline,
     target,
     localPort,
   }

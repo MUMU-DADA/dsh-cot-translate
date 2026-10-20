@@ -30,6 +30,8 @@
   "set.downloadFailed": "ダウンロード失敗",
   "set.sessionModel": "現在のチャットの API モデルで翻訳する",
   "set.sessionModelHint": "オンにすると現在のチャットで選択中のモデルを使用します（高速で VRAM を消費しませんが、API 利用料が発生します）。ローカルモデルは予備として動作します。",
+  "set.allowOnline": "オンライン翻訳を許可（Google）",
+  "set.allowOnlineHint": "デフォルトはオフです。オンの場合、ローカルモデルが使えないときに思考の原文を Google の無料翻訳エンドポイントへ送信します。オフの場合はローカルでのみ翻訳し、失敗時は原文を表示します。",
   "set.selftest": "ローカルモデル速度テスト",
   "set.selftestHint": "定型サンプルを現在の翻訳チェーンで実行し、1 セグメントあたりの平均所要時間を計測します。",
   "set.selftestStart": "テスト実行",

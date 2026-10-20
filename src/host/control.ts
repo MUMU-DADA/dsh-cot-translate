@@ -108,7 +108,12 @@ export class Control {
     const baseURL = `http://127.0.0.1:${this.settings.localPort}`
     // 静态配置里的 chain 是底线（测试/自定义部署用它锁定来源）；
     // 「用对话模型翻译」只会在最前面插一档。
-    const chain: ProviderId[] = [...base.chain]
+    // 隐私默认：未显式允许在线翻译时，Google 档不进入实际链路，
+    // 本地失败就 fail-open 显示原文，绝不静默把思考内容发给第三方。
+    const allowOnline = this.settings.allowOnline
+    const chain: ProviderId[] = base.chain.filter(
+      (id) => id !== 'google' || (allowOnline && base.google.enabled),
+    )
     if (this.settings.useSessionModel && this.sessionHooks() !== undefined) {
       if (!chain.includes('session')) chain.unshift('session')
     } else {
@@ -120,6 +125,7 @@ export class Control {
       enabled: base.enabled && this.settings.enabled,
       target,
       chain,
+      google: { ...base.google, enabled: base.google.enabled && allowOnline },
       llamacpp: { ...base.llamacpp, modelPath, baseURL },
     }
   }

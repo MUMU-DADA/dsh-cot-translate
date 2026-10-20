@@ -558,6 +558,9 @@ test('设置：归一化坏值回退默认，补丁落盘可读回', withTempHom
   assert.equal(host.normalizeSettings({ mode: 'nope' }).mode, 'semi')
   assert.equal(host.normalizeSettings({ modelId: '   ' }).modelId, host.DEFAULT_SETTINGS.modelId)
   assert.equal(host.normalizeSettings({ target: 42 }).target, host.DEFAULT_SETTINGS.target)
+  assert.equal(host.normalizeSettings({}).allowOnline, false, '在线回退默认关闭')
+  assert.equal(host.normalizeSettings({ allowOnline: true }).allowOnline, true)
+  assert.equal(host.normalizeSettings({ allowOnline: 'yes' }).allowOnline, false, '坏值回退关闭')
 
   const saved = host.patchSettings({ mode: 'auto' })
   assert.equal(saved.mode, 'auto')
@@ -643,6 +646,25 @@ test('Control：设置即时生效（关翻译 / 用会话模型 / 静态 chain 
   // 没有会话 id 时 session 档拿不到路由 → 降级到 ollama（换一段文本避开缓存）
   const fallback = await sessionControl.translate(['fallback text'])
   assert.equal(fallback.provider, 'ollama')
+}))
+
+test('Control：在线回退默认关闭，显式开启后才把 Google 放进链', withTempHome(async () => {
+  let calls = 0
+  const control = new host.Control({
+    staticConfig: { chain: ['google'], google: { enabled: true } },
+    fetchImpl: async () => {
+      calls += 1
+      throw new Error('online provider must not be called')
+    },
+  })
+
+  assert.deepEqual(control.state().chain, [], '默认不应把 Google 放进链')
+  const blocked = await control.translate(['private reasoning text'])
+  assert.deepEqual(blocked.translations, [''], '默认失败时只显示原文')
+  assert.equal(calls, 0, '默认不应发起任何在线请求')
+
+  const on = control.update({ allowOnline: true })
+  assert.deepEqual(on.chain, ['google'], '显式开启后才进入链')
 }))
 
 test('Control：速度自测返回耗时与 provider', withTempHome(async () => {

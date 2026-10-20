@@ -30,6 +30,8 @@
   "set.downloadFailed": "下載失敗",
   "set.sessionModel": "使用目前對話的 API 模型翻譯",
   "set.sessionModelHint": "開啟後改用目前對話所選的模型進行翻譯（速度更快、不佔本機顯示卡記憶體，但會產生 API 呼叫費用）；本機模型退居保底。",
+  "set.allowOnline": "允許線上翻譯（Google）",
+  "set.allowOnlineHint": "預設關閉。開啟後，本機模型無法使用時會將這批思考原文傳送給 Google 免費翻譯介面；關閉則只在本機翻譯，失敗時直接顯示原文。",
   "set.selftest": "本機模型速度測試",
   "set.selftestHint": "使用固定測試語句執行一次目前的翻譯鏈，測量平均每段耗時。",
   "set.selftestStart": "開始測試",

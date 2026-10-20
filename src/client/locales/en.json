@@ -30,6 +30,8 @@
   "set.downloadFailed": "Download failed",
   "set.sessionModel": "Translate with the current conversation model",
   "set.sessionModelHint": "Uses the model selected for the current conversation (faster and uses no local VRAM, but incurs API token costs); the local model stays as fallback.",
+  "set.allowOnline": "Allow online translation (Google)",
+  "set.allowOnlineHint": "Off by default. When enabled, the reasoning text is sent to Google's free translation endpoint if the local model is unavailable; when off, translation stays local and the original text is shown on failure.",
   "set.selftest": "Local model speed test",
   "set.selftestHint": "Runs a fixed sample through the current translation chain and reports the average time per segment.",
   "set.selftestStart": "Run test",

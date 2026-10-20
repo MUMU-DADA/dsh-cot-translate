@@ -8,7 +8,7 @@
  * ChatNodeStore 数据层取（保证围栏代码不被当成自然语言），拿不到才退回 DOM 文本。
  * 详见 docs/DECISIONS.md ADR-011 / ADR-014。
  *
- * 兼容基线：DSH 0.2.0-rc.2 + cordis 4.0.4。
+ * 兼容基线：DSH 0.2.0-rc.2 / 0.2.1-rc.2 + cordis 4.0.4 / 4.0.5。
  */
 
 import { attachBilingual } from './attach'

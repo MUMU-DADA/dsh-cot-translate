@@ -30,6 +30,8 @@
   "set.downloadFailed": "下载失败",
   "set.sessionModel": "使用当前对话的 API 模型翻译",
   "set.sessionModelHint": "开启后直接用当前对话选中的模型做翻译（速度更快、不占本机显存，但会产生 API 调用费用）；本地模型退居兜底。",
+  "set.allowOnline": "允许在线翻译（Google）",
+  "set.allowOnlineHint": "默认关闭。开启后，本地模型不可用时会把这批思考原文发送给 Google 免费翻译接口；关闭则只在本机翻译，失败时直接显示原文。",
   "set.selftest": "本地模型速度测试",
   "set.selftestHint": "用固定测试语句跑一遍当前翻译链，测量平均每段耗时。",
   "set.selftestStart": "开始测试",

@@ -18,7 +18,7 @@
 ### ✅ M2 服务端翻译接口与本地 `llama.cpp` 集成（2026-10-20）
 - 同源路由 `/_cotx/*`、入参边界校验、本机访问保护（`connection.requestRejection`）。
 - 默认使用免安装、无 GUI 的 `llama.cpp` `llama-server`（Vulkan 后端，按需无窗口拉起），支持腾讯 **Hy-MT2** GGUF 模型。
-- 保留可选 Ollama 适配器与免费 Google 翻译兜底；全部失败时安全退化显示原文（fail-open）。
+- 保留可选 Ollama 适配器；免费 Google 兜底改为显式开关（默认关闭，隐私优先）。全部失败时安全退化显示原文（fail-open）。
 
 ### ✅ M3 客户端代码保护与分批流水线（2026-10-20）
 - 分段原位保留代码块、行内代码、URL、文件路径与 `fn()` 调用（不使用易损坏的占位符）。
@@ -32,7 +32,7 @@
 - 设置页与文档完整展示模型与第三方组件许可证（`THIRD_PARTY_LICENSES.md`）。
 
 ### ✅ M4.5 插件界面多语言（i18n）与多语言文档（2026-10-20）
-- 抽取全量 62 个 UI 文案 key 至 `src/client/locales/<locale>.json`，服务端改为只返回 `labelKey` / `noteKey` / `errorCode`。
+- 抽取全量 UI 文案 key（当前 64 个）至 `src/client/locales/<locale>.json`，服务端改为只返回 `labelKey` / `noteKey` / `errorCode`。
 - 完成 **9 种 UI 语言 100% 翻译**：简体中文（`zh`）、English（`en`）、繁體中文（`zh-Hant`）、日本語（`ja`）、한국어（`ko`）、Français（`fr`）、Deutsch（`de`）、Español（`es`）、Русский（`ru`）。
 - 切换 DSH 语言时设置页与双语面板实时刷新，数字与容量使用 `Intl.NumberFormat` 本地化。
 - 提供中、英、繁中、日四语 `README` 及双语架构与许可证文档。

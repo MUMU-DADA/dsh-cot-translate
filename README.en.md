@@ -4,7 +4,7 @@
 
 A display-only plugin for **DeepSeek Harness (DSH)** that translates model **reasoning (chain-of-thought)** in real time right next to the original text. It prioritizes a **local translation model** (`llama.cpp` `llama-server`, or optional Ollama) and falls back to free Google Translate if local inference is unavailable.
 
-> **Compatible with**: DSH `0.2.0-rc.2` + Cordis `4.0.4` (built into DSH Desktop `0.5.23`)
+> **Compatible with**: DSH `0.2.0-rc.2` / `0.2.1-rc.2` + Cordis `4.0.4` / `4.0.5` (bundled with DSH Desktop)
 
 ---
 
@@ -17,7 +17,7 @@ Models frequently think in English even when you chat in another language. This 
 - **Code & technical tokens stay intact**: Fenced code blocks, inline code, file paths, commands, URLs, and function calls (`fn()`) are preserved verbatim and never mangled by the translator.
 - **33+ target languages**: Powered by **Tencent Hy-MT2**, supporting Simplified/Traditional Chinese, English, Japanese, Korean, French, German, Spanish, Portuguese, Russian, Arabic, Hindi, Thai, Vietnamese, Indonesian, and more.
 - **9 UI languages**: The plugin interface (Settings page and bilingual panel) supports **简体中文, English, 繁體中文, 日本語, 한국어, Français, Deutsch, Español, and Русский**, switching live with DSH's language setting.
-- **Safe fallback**: If all translation providers are offline, the original reasoning text remains cleanly readable without errors.
+- **Privacy-safe fallback**: Only local inference runs by default. If the local model is unavailable, the original text is shown; nothing is sent to a third party unless you explicitly enable **Allow online translation (Google)** in Settings.
 
 ---
 
@@ -65,7 +65,7 @@ Local inference runs headlessly via `llama.cpp`'s `llama-server` — **no instal
    - macOS / Linux: `~/tools/llama.cpp/`
 2. Place the default fallback model `Hy-MT2-1.8B-Q4_K_M.gguf` (~1.08 GB, from [tencent/Hy-MT2-1.8B-GGUF](https://huggingface.co/tencent/Hy-MT2-1.8B-GGUF)) into `<plugin-root>/models/` (or download models directly from the plugin settings page).
 
-You **do not** need to start `llama-server` manually. Whenever a translation is requested, the plugin automatically launches `llama-server` in the background (`--no-webui`, listening on `127.0.0.1:28457` by default). If no local runtime is installed, the plugin automatically falls back to Google Translate.
+You **do not** need to start `llama-server` manually. Whenever a translation is requested, the plugin automatically launches `llama-server` in the background (`--no-webui`, listening on `127.0.0.1:28457` by default). If no local runtime is installed, the original text is shown; the free Google fallback is used only after you explicitly enable **Allow online translation (Google)** in Settings.
 
 ---
 
@@ -80,6 +80,7 @@ All settings are saved to `~/.dsh/cot-translate/settings.json` and take effect i
 | **Target language** | Choose from 33+ languages supported by Hy-MT2. Defaults to your DSH client language on first run. |
 | **Local translation model** | Switch between the bundled **Hy-MT2 1.8B Q4_K_M** fallback (~1.5 GB VRAM, fastest), **1.8B Q8_0** (~2.3 GB VRAM), or **7B Q4_K_M** (~4.5 GB VRAM, highest quality). Download, update, or delete optional models right from the UI. |
 | **Translate with conversation model** | Use the API model selected in your current chat session instead of local VRAM (incurs API token costs; local model remains as fallback). |
+| **Allow online translation (Google)** | **Off by default.** When off, translation stays local and the original text is shown if the local model fails. When on, the reasoning text is sent to Google's free endpoint only if the local model is unavailable. **Privacy-sensitive; review before enabling.** |
 | **Translation cache** | Caches translations on disk (`~/.dsh/cot-translate/cache/`, up to 50 MB, storing **translations only** and never source text). Instant 0 ms hits across restarts; one-click clear. |
 | **Local service port** | Loopback port for `llama-server` (default `28457` to avoid common port conflicts). Shows live port status (free / used by our service / busy). |
 | **Local model speed test** | Runs a standard sample through your active translation chain and reports average latency per segment. |

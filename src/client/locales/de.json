@@ -30,6 +30,8 @@
   "set.downloadFailed": "Download fehlgeschlagen",
   "set.sessionModel": "Mit dem API-Modell der aktuellen Unterhaltung übersetzen",
   "set.sessionModelHint": "Verwendet das in der aktuellen Unterhaltung gewählte Modell (schneller, kein VRAM-Bedarf, verursacht jedoch API-Kosten); das lokale Modell bleibt als Fallback aktiv.",
+  "set.allowOnline": "Online-Übersetzung erlauben (Google)",
+  "set.allowOnlineHint": "Standardmäßig aus. Wenn aktiviert, wird der Denktext an den kostenlosen Google-Übersetzungsdienst gesendet, falls das lokale Modell nicht verfügbar ist; andernfalls bleibt die Übersetzung lokal und bei Fehlern wird der Originaltext angezeigt.",
   "set.selftest": "Geschwindigkeitstest für lokales Modell",
   "set.selftestHint": "Führt ein festes Textbeispiel über die aktuelle Übersetzungskette aus und misst die durchschnittliche Dauer pro Abschnitt.",
   "set.selftestStart": "Test starten",

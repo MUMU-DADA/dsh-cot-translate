@@ -149,6 +149,38 @@ test('展开的思考块注入双语面板并回填译文', async (context) => {
   )
 })
 
+test('与 @changfenhuang/dsh-genui 共存：卡片渲染根不影响思考块注入', async (context) => {
+  document.body.innerHTML = `
+    <div data-conversation-session="session-1">
+      <div data-chat-node-key="node-1" data-chat-group-part="response">
+        <div data-dsh-genui-assistant="">
+          <div class="md-code-block" data-genui-card="1"><div class="genui-root">卡片</div></div>
+        </div>
+      </div>
+      <div data-chat-node-key="node-1" data-chat-group-part="reasoning">
+        <div data-variant="think" data-expanded="true" data-state="ok">
+          <div class="lcKema_row">Think</div>
+          <div class="lcKema_thinkBody"><div class="md_root" data-md="1">Para one.</div></div>
+        </div>
+      </div>
+    </div>
+  `
+  const body = document.querySelector('[class*="_thinkBody"]')
+  const card = document.querySelector('[data-genui-card="1"]')
+  const translator = fakeTranslator()
+  const handle = client.attachBilingual({ document, translator, lookup: () => undefined, throttleMs: 0 })
+  context.after(() => handle.dispose())
+  handle.scan()
+  await flush()
+
+  // GenUI 只接管代码块，原生思考行仍然存在 → 面板照常注入。
+  assert.ok(body.querySelector('[data-cot-panel]') !== null, '原生思考块仍应注入面板')
+  // 共存的前提：GenUI 的渲染根不能被翻译层动到。
+  assert.equal(card.textContent, '卡片', 'GenUI 卡片 DOM 不应被改动')
+  assert.equal(card.querySelector('[data-cot-panel]'), null, '面板不能挂到卡片上')
+  assert.equal(card.getAttribute('data-cot-bilingual'), null, '卡片不应被打上隐藏标记')
+})
+
 test('折叠后清理：面板与标记都移除', async (context) => {
   const fixture = chatFixture({ text: 'Only paragraph.' })
   const translator = fakeTranslator()

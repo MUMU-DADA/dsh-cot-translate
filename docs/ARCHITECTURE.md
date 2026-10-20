@@ -11,7 +11,7 @@
 | **双语对照面板** | ✅ 已完成 | `src/client/{attach,bilingual,styles,text}.ts` | 监听展开的 `Think` 思考块，就地插入“左原文、右译文”双栏面板 |
 | **代码保护与分批** | ✅ 已完成 | `src/client/{strip,translate}.ts` | 在浏览器端把代码块、路径、URL、函数名原样分离，只把自然语言分段送翻 |
 | **设置页与模型管理** | ✅ 已完成 | `src/client/{settings-view,prefs}.ts`、`src/host/{control,settings,models}.ts` | 提供开关、时机、33+ 目标语言、模型下载/更新/删除、端口配置、缓存清理与速度自测 |
-| **服务端翻译链与缓存** | ✅ 已完成 | `src/index.ts`、`src/host/{chain,providers,runtime,cache,persistent-cache,routes}.ts` | 按优先级调用会话模型 / 本地 `llama-server` / 免费 Google 兜底，提供内存 + 50MB 磁盘缓存 |
+| **服务端翻译链与缓存** | ✅ 已完成 | `src/index.ts`、`src/host/{chain,providers,runtime,cache,persistent-cache,routes}.ts` | 按优先级调用会话模型 / 本地 `llama-server`；免费 Google 仅在显式开启在线翻译后作为兜底；提供内存 + 50MB 磁盘缓存 |
 | **多语言界面（i18n）** | ✅ 已完成 | `src/client/locales/*.json`、`src/client/locales/index.ts` | 内置简中、英、繁中、日、韩、法、德、西、俄 9 种界面语言，随 DSH 语言设置实时切换 |
 
 ---
@@ -33,7 +33,7 @@
 │ 6. 设置页（settings.section 槽位）│  返回各段译文 │   内存 LRU (600条) → 磁盘缓存(50MB)│
 └──────────────────────────────────┘              │   → [可选] 当前对话 API 模型       │
                                                    │   → 本地 llama-server (Hy-MT2)     │
-                                                   │   → 免费 Google 翻译兜底           │
+                                                   │   → [显式开启] 免费 Google 兜底    │
                                                    └────────────────────────────────────┘
 ```
 

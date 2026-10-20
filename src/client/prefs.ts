@@ -16,6 +16,7 @@ export interface ClientPrefs {
   target: string
   modelId: string
   useSessionModel: boolean
+  allowOnline: boolean
 }
 
 export const DEFAULT_PREFS: ClientPrefs = {
@@ -25,6 +26,7 @@ export const DEFAULT_PREFS: ClientPrefs = {
   target: '',
   modelId: 'hy-mt2-1.8b-q4',
   useSessionModel: false,
+  allowOnline: false,
 }
 
 /** host `/state` 里与设置相关的部分。 */
@@ -57,6 +59,7 @@ export function setPrefs(next: Partial<ClientPrefs>): void {
     target: merged.target,
     modelId: merged.modelId,
     useSessionModel: merged.useSessionModel,
+    allowOnline: merged.allowOnline,
   }
   for (const listener of listeners) listener(current)
 }

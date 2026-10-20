@@ -130,6 +130,7 @@ test('设置页：挂载后渲染开关、时机、模型、端口、缓存与�
     const text = container.textContent
     assert.ok(text.includes('思维链翻译'), `应渲染标题: ${text.slice(0, 200)}`)
     assert.ok(text.includes('启用翻译'), `应有翻译开关: ${text.slice(0, 400)}`)
+    assert.ok(text.includes('允许在线翻译'), '应有在线翻译开关')
     assert.ok(text.includes('半自动'), '应有时机切换')
     assert.ok(text.includes('Hy-MT2 1.8B Q4_K_M'), '应列出模型')
     assert.ok(text.includes('下载'), '未安装模型应有下载按钮')
