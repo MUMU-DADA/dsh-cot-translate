@@ -88,7 +88,7 @@ export function sentenceChunks(text: string, max = MAX_CHUNK_CHARS): string[] {
   if (text.length <= max) return text === '' ? [] : [text]
 
   // 先按「段末/句末 + 其后空白」切，保留分隔符在块尾部。
-  const pieces = text.match(/[^.!?。！？\n]+(?:[.!?。！？]+|\n+|$)/g) ?? [text]
+  const pieces = text.match(/[^.!?。！？\n]+(?:[.!?。！？]+|\n+|$)|[.!?。！？\n]+/g) ?? [text]
   const chunks: string[] = []
   let current = ''
   for (const piece of pieces) {

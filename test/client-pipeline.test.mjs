@@ -150,3 +150,12 @@ test('TextTranslator：纯技术文本不发请求', async () => {
   assert.equal(fetchImpl.calls.length, 0)
   assert.equal(outcome.text, text)
 })
+
+test('sentenceChunks preserves leading punctuation and blank lines in long text', () => {
+  for (const prefix of ['...\n\n', '！？\n', '\n\n']) {
+    const source = prefix + 'A long paragraph with words. '.repeat(30)
+    const chunks = client.sentenceChunks(source, 80)
+    assert.equal(chunks.join(''), source)
+    assert.ok(chunks.every(chunk => chunk.length <= 80))
+  }
+})
