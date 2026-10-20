@@ -1,0 +1,115 @@
+/**
+ * 设置页渲染冒烟（jsdom + React）：确认 `SettingsSection` 能挂载、读到 `/_cotx/state`
+ * 并渲染开关与模型行。真实数据来自 host，这里用假 fetch。
+ */
+
+import assert from 'node:assert/strict'
+import { readFile } from 'node:fs/promises'
+import { createRequire } from 'node:module'
+import test from 'node:test'
+import { JSDOM } from 'jsdom'
+
+const REQUIRE = createRequire(import.meta.url)
+const SOURCE = await readFile(new URL('../lib/client.js', import.meta.url), 'utf8')
+
+/** 假状态：一个自带模型（已安装）+ 一个预选（未安装）。 */
+const STATE = {
+  settings: {
+    enabled: true,
+    mode: 'semi',
+    modelId: 'hy-mt2-1.8b-q4',
+    useSessionModel: false,
+    target: 'zh-Hans',
+  },
+  models: [
+    {
+      id: 'hy-mt2-1.8b-q4',
+      label: 'Hy-MT2 1.8B Q4_K_M',
+      bundled: true,
+      note: '插件自带 · 兜底模型（不可删除）；最快，显存约 1.5GB',
+      sizeMB: 1080.6,
+      installed: true,
+      bytes: 1133000000,
+    },
+    {
+      id: 'hy-mt2-7b-q4',
+      label: 'Hy-MT2 7B Q4_K_M',
+      bundled: false,
+      note: '质量最好，显存约 4.5GB',
+      sizeMB: 4410.4,
+      installed: false,
+      bytes: 0,
+    },
+  ],
+  download: [
+    { id: 'hy-mt2-1.8b-q4', phase: 'idle', received: 0, total: 0 },
+    { id: 'hy-mt2-7b-q4', phase: 'idle', received: 0, total: 0 },
+  ],
+  chain: ['llamacpp', 'google'],
+  enabled: true,
+  target: 'zh-Hans',
+  bundledReady: true,
+}
+
+test('设置页：挂载后渲染开关、时机与模型列表', async () => {
+  const dom = new JSDOM('<!doctype html><html><body><div id="root"></div></body></html>', {
+    pretendToBeVisual: true,
+  })
+  const previous = {
+    window: globalThis.window,
+    document: globalThis.document,
+    fetch: globalThis.fetch,
+  }
+  globalThis.window = dom.window
+  globalThis.document = dom.window.document
+  const fetchStub = async () => ({
+    ok: true,
+    status: 200,
+    json: async () => STATE,
+  })
+  globalThis.fetch = fetchStub
+  dom.window.fetch = fetchStub
+
+  try {
+    // jsdom 的 AbortSignal 未必实现静态 timeout；apiGet 会用到它。
+    if (typeof dom.window.AbortSignal.timeout !== 'function') {
+      Object.defineProperty(dom.window.AbortSignal, 'timeout', {
+        value: () => new dom.window.AbortController().signal,
+        configurable: true,
+      })
+    }
+    let captured
+    dom.window.__ModuleLoader__ = {
+      load(options) {
+        captured = options
+      },
+    }
+    dom.window.eval(SOURCE)
+    const client = captured.factory(REQUIRE)
+
+    const React = REQUIRE('react')
+    const { createRoot } = REQUIRE('react-dom/client')
+    const container = dom.window.document.getElementById('root')
+    const root = createRoot(container)
+    root.render(React.createElement(client.SettingsSection, { t: (key) => key }))
+
+    for (let attempt = 0; attempt < 40; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 0))
+      if (container.textContent.includes('set.modeSemi')) break
+    }
+
+    const text = container.textContent
+    assert.ok(text.includes('set.title'), `应渲染标题: ${text.slice(0, 200)}`)
+    assert.ok(text.includes('set.enabled'), `应有翻译开关: ${text.slice(0, 400)}`)
+    assert.ok(text.includes('set.modeSemi'), '应有时机切换')
+    assert.ok(text.includes('Hy-MT2 1.8B Q4_K_M'), '应列出模型')
+    assert.ok(text.includes('set.download'), '未安装模型应有下载按钮')
+    assert.ok(text.includes('llamacpp → google'), '应显示当前翻译链')
+    root.unmount()
+  } finally {
+    globalThis.window = previous.window
+    globalThis.document = previous.document
+    globalThis.fetch = previous.fetch
+    dom.window.close()
+  }
+})

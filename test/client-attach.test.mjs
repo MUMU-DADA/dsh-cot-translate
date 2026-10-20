@@ -402,3 +402,49 @@ test('关闭翻译：不注入面板，也不发请求', async (context) => {
   assert.equal(fixture.body.getAttribute('data-cot-bilingual'), null, '关闭时不应打标记')
   assert.equal(translator.calls.length, 0, '关闭时不应发翻译请求')
 })
+test('apply：注册设置页（settings.section）并保持双语注入', async () => {
+  const registered = []
+  const injectedNames = []
+  const ctx = {
+    effect(callback) {
+      callback()
+      return () => {}
+    },
+    slots: {
+      inject(name, activate) {
+        injectedNames.push(name)
+        activate()
+        return () => {}
+      },
+      register(options, component) {
+        registered.push({ options, component })
+        return () => {}
+      },
+    },
+    locale: {
+      register() {
+        return () => {}
+      },
+      bind() {
+        return (key) => key
+      },
+    },
+    sessions: { binding: () => undefined },
+    uiConversation: { binding: () => ({ target: () => ({ getSnapshot: () => undefined }) }) },
+    get() {
+      return undefined
+    },
+  }
+  client.apply(ctx)
+
+  assert.ok(injectedNames.includes('settings.section'), '设置页应注入到 settings.section')
+  const section = registered.find((item) => item.options.name === 'settings.section')
+  assert.ok(section !== undefined, '应注册 settings.section')
+  assert.equal(section.options.id, 'cot-translate')
+  assert.equal(typeof section.component, 'function', '设置页应是 React 组件')
+  // 其它槽位不应被误注册
+  assert.deepEqual(
+    registered.map((item) => item.options.name),
+    ['settings.section'],
+  )
+})
