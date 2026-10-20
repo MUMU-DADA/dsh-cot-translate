@@ -35,8 +35,11 @@ export interface ControlDeps {
   staticConfig?: unknown
   fetchImpl?: FetchLike
   log?: (message: string) => void
-  /** 「用当前对话的模型翻译」的宿主能力；缺省则该档不可用。 */
-  sessionModel?: SessionModelHooks
+  /**
+   * 「用当前对话的模型翻译」的宿主能力。用 getter 而不是对象：宿主服务是异步
+   * 就绪的（`ctx.inject(['llm','sessions'])` 回调里才拿到），拿到后 `refresh()` 即可。
+   */
+  sessionModel?: () => SessionModelHooks | undefined
   /** 本地服务拉起/停止的测试注入。 */
   launchDeps?: RuntimeDeps
 }
@@ -90,7 +93,7 @@ export class Control {
     // 静态配置里的 chain 是底线（测试/自定义部署用它锁定来源）；
     // 「用对话模型翻译」只会在最前面插一档。
     const chain: ProviderId[] = [...base.chain]
-    if (this.settings.useSessionModel && this.deps.sessionModel !== undefined) {
+    if (this.settings.useSessionModel && this.sessionHooks() !== undefined) {
       if (!chain.includes('session')) chain.unshift('session')
     } else {
       const index = chain.indexOf('session')
@@ -106,12 +109,19 @@ export class Control {
   }
 
   /** 用当前设置重建 Translator（同时清空 LRU）。 */
+  /** 当前的会话模型钩子（宿主服务就绪后才有）。 */
+  private sessionHooks(): SessionModelHooks | undefined {
+    try {
+      return this.deps.sessionModel?.()
+    } catch {
+      return undefined
+    }
+  }
+
   private buildTranslator(): Translator {
     const config = this.buildConfig()
-    const extraProviders =
-      this.deps.sessionModel === undefined
-        ? []
-        : [createSessionModelProvider(this.deps.sessionModel)]
+    const hooks = this.sessionHooks()
+    const extraProviders = hooks === undefined ? [] : [createSessionModelProvider(hooks)]
     return new Translator({
       config,
       ...(this.deps.fetchImpl === undefined ? {} : { fetchImpl: this.deps.fetchImpl }),
@@ -189,6 +199,12 @@ export class Control {
     if (removed && id === this.settings.modelId) {
       this.update({ modelId: 'hy-mt2-1.8b-q4' })
     }
+    return this.state()
+  }
+
+  /** 宿主服务就绪后调用：按当前设置重建翻译器（让新能力生效）。 */
+  refresh(): ControlState {
+    this.translator = this.buildTranslator()
     return this.state()
   }
 

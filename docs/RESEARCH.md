@@ -235,3 +235,4 @@ Ollama 现成标签（已核实）：
 - `llama-server` 默认端口 9931、默认开 Web UI，自启必须显式 `--port` + `--no-webui`。
 - 停本地服务只能停**本进程 spawn 的** pid；用户手动起的实例不跟踪（重启/换模型后靠探活复用）。
 - 设置页里 React 由 shell 的 PLATFORM_MODULES 提供，bundle 必须 external `react` / `react/jsx-runtime`。
+**服务就绪时机**：host 插件加载时 `llm` / `sessions` 可能还没就绪（按 profile 里插件顺序）。正确姿势是 `ctx.inject(['llm','sessions'], (services) => ...)` 回调里再取；直接读 `ctx.llm` 在未 inject 时可能抛错，读取要包 try/catch（本插件两个入口都试）。

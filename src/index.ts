@@ -59,6 +59,8 @@ export interface HostContext {
   webServer: WebServerLike
   logger?: { info?: (message: string) => void; warn?: (message: string) => void }
   get?: (name: string) => unknown
+  /** cordis 的「等这些服务就绪后回调」入口（拿 llm/sessions 用）。 */
+  inject?: (names: string[], callback: (ctx: HostContext) => void) => unknown
   /** cordis 会把服务直接挂在 ctx 上；两个入口都试一下。 */
   llm?: unknown
   sessions?: unknown
@@ -119,9 +121,17 @@ async function buildUserMessages(user: string): Promise<unknown[]> {
 
 /** 取一个宿主服务：优先 ctx 上的属性，其次 ctx.get(name)。 */
 function serviceOf<T>(ctx: HostContext, name: 'llm' | 'sessions' | 'connection'): T | undefined {
-  const direct = (ctx as unknown as Record<string, unknown>)[name]
-  if (direct !== undefined) return direct as T
-  return ctx.get?.(name) as T | undefined
+  try {
+    const direct = (ctx as unknown as Record<string, unknown>)[name]
+    if (direct !== undefined) return direct as T
+  } catch {
+    // 未 inject 的服务在 cordis 里可能抛错：忽略，走 ctx.get
+  }
+  try {
+    return ctx.get?.(name) as T | undefined
+  } catch {
+    return undefined
+  }
 }
 
 /** 把 ctx.llm / ctx.sessions 适配成「用对话模型翻译」的钩子。 */
@@ -166,16 +176,35 @@ function makeSessionModelHooks(ctx: HostContext): SessionModelHooks | undefined 
  * @param rawConfig - profile patch 里的配置，未校验，由 normalizeConfig 兜底。
  */
 export function apply(ctx: HostContext, rawConfig?: unknown): void {
+  // 会话模型钩子是晚绑定：llm/sessions 服务可能在插件加载后才就绪。
+  let sessionHooks: SessionModelHooks | undefined
   const control = new Control({
     ...(rawConfig === undefined ? {} : { staticConfig: rawConfig }),
     log: (message) => {
       ctx.logger?.info?.(message)
     },
-    ...(() => {
-      const hooks = makeSessionModelHooks(ctx)
-      return hooks === undefined ? {} : { sessionModel: hooks }
-    })(),
+    sessionModel: () => sessionHooks,
   })
+
+  /** 绑定一次宿主服务：成功就刷新翻译链，让「用对话模型翻译」可用。 */
+  const bindSessionHooks = (source: HostContext): void => {
+    try {
+      const hooks = makeSessionModelHooks(source)
+      if (hooks === undefined || sessionHooks !== undefined) return
+      sessionHooks = hooks
+      control.refresh()
+    } catch {
+      // 宿主服务形状变了：保持本地模型，不影响其它功能
+    }
+  }
+
+  if (typeof ctx.inject === 'function') {
+    ctx.inject(['llm', 'sessions'], (services) => {
+      bindSessionHooks(services ?? ctx)
+    })
+  } else {
+    bindSessionHooks(ctx)
+  }
 
   // trust fence：桌面端由 connection 服务判定来源；拿不到就退化为“不额外拦截”，
   // 但路由仍然只挂在 profile 的 loopback webserver 上（见 ADR-007）。

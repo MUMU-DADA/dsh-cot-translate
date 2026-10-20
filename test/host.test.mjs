@@ -620,10 +620,10 @@ test('Control：设置即时生效（关翻译 / 用会话模型 / 静态 chain 
   const sessionControl = new host.Control({
     staticConfig,
     fetchImpl,
-    sessionModel: {
+    sessionModel: () => ({
       resolveRoute: (sessionId) => (sessionId === undefined ? undefined : { provider: 'p', model: 'm' }),
       call: async (request) => `会话译文:${request.user}`,
-    },
+    }),
   })
   sessionControl.update({ useSessionModel: true })
   assert.deepEqual(sessionControl.state().chain, ['session', 'ollama'])
