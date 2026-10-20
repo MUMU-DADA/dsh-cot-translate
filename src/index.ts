@@ -233,7 +233,7 @@ export function apply(ctx: HostContext, rawConfig?: unknown): void {
 
 // ── 供测试直接引用的纯逻辑（对宿主 Loader 无副作用）─────────────────────
 export { LruCache, NegativeCache, cacheKey } from './host/cache'
-export { Translator } from './host/chain'
+export { Translator, errorCategory } from './host/chain'
 export { DEFAULT_CONFIG, PROVIDER_IDS, normalizeConfig } from './host/config'
 export type {
   CotConfig,

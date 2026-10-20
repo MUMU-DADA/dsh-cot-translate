@@ -181,9 +181,10 @@ export class Control {
     return probePort(port, this.deps.fetchImpl).then((status) => ({ port, ...status }))
   }
 
-  /** 清空磁盘译文缓存。 */
+  /** 清空磁盘译文缓存 + 内存 LRU（重建 Translator 才会真正丢内存缓存）。 */
   clearCache(): ControlState {
     this.persistent.clear()
+    this.translator = this.buildTranslator()
     return this.state()
   }
 

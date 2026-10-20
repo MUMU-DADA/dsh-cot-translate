@@ -992,3 +992,81 @@ test('registerRoutes：非法 / 超限请求体返回 400 / 413，且不触发�
   assert.equal(emptyBody.statusCode, 200)
   assert.equal(calls.clear, 1)
 })
+test('errorCategory：把第三方错误归类，不保留原文', () => {
+  assert.equal(host.errorCategory(new Error('fetch failed')), 'network')
+  assert.equal(host.errorCategory(new Error('ECONNREFUSED 127.0.0.1')), 'network')
+  assert.equal(host.errorCategory(Object.assign(new Error('x'), { name: 'TimeoutError' })), 'timeout')
+  assert.equal(host.errorCategory(new Error('HTTP 502')), 'http')
+  assert.equal(host.errorCategory(new Error('Unauthorized: bad api key')), 'auth')
+  assert.equal(host.errorCategory(new Error('Unexpected token in JSON')), 'parse')
+  assert.equal(host.errorCategory(new Error('p: length mismatch')), 'length-mismatch')
+  assert.equal(host.errorCategory('随便什么原文'), 'unknown')
+})
+
+test('Translator：日志只记错误类别，不泄露第三方原始错误文本', async () => {
+  const logs = []
+  const translator = new host.Translator({
+    config: host.normalizeConfig({
+      chain: ['ollama'],
+      google: { enabled: false },
+      ollama: { enabled: true, model: 'm', autostart: false },
+    }),
+    fetchImpl: fakeFetch(() => {
+      throw new Error('SECRET 原文 hello world sk-123456')
+    }),
+    log: (line) => logs.push(line),
+  })
+  const out = await translator.translate(['hello world'])
+  assert.deepEqual(out.translations, [''])
+  assert.ok(logs.some((line) => line.includes('failed')), '应有失败日志')
+  const joined = JSON.stringify(logs)
+  assert.equal(joined.includes('SECRET'), false, '日志不能含第三方原始错误')
+  assert.equal(joined.includes('sk-123456'), false, '日志不能含疑似密钥')
+  assert.equal(joined.includes('hello world'), false, '日志不能含原文')
+})
+
+test('Translator.models：拿不到列表时日志同样不泄露原始错误', async () => {
+  const logs = []
+  const translator = new host.Translator({
+    config: host.normalizeConfig({
+      chain: ['ollama'],
+      google: { enabled: false },
+      ollama: { enabled: true, baseURL: 'http://127.0.0.1:29991', model: 'auto', autostart: false },
+    }),
+    fetchImpl: fakeFetch(() => {
+      throw new Error('SECRET-TOKEN-xyz 用户原文')
+    }),
+    log: (line) => logs.push(line),
+  })
+  assert.deepEqual(await translator.models(), [])
+  assert.ok(logs.some(line => line.includes('listModels failed')))
+  assert.equal(JSON.stringify(logs).includes('SECRET'), false)
+})
+
+test('Control.clearCache：同时清掉磁盘与内存缓存', withTempHome(async () => {
+  let calls = 0
+  const fetchImpl = fakeFetch(() => {
+    calls += 1
+    return jsonResponse(OLLAMA_OK)
+  })
+  const control = new host.Control({
+    staticConfig: host.normalizeConfig({
+      chain: ['ollama'],
+      google: { enabled: false },
+      llamacpp: { enabled: false },
+      ollama: { enabled: true, model: 'm', autostart: false },
+    }),
+    fetchImpl,
+  })
+  const first = await control.translate(['hello'])
+  assert.equal(first.provider, 'ollama')
+  const afterFirst = calls
+  // 第二次命中内存缓存，不该再打 provider
+  await control.translate(['hello'])
+  assert.equal(calls, afterFirst)
+  // 清缓存后内存 LRU 也应清空，必须重新请求
+  control.clearCache()
+  const afterClear = await control.translate(['hello'])
+  assert.equal(afterClear.provider, 'ollama')
+  assert.equal(calls, afterFirst + 1)
+}))

@@ -42,6 +42,48 @@ function timeoutSignal(ms: number): AbortSignal {
 }
 
 /** 翻译编排器：一个插件实例一个。 */
+/**
+ * 日志里只允许出现的错误类别：**绝不**输出第三方原始 error.message
+ * （有些 provider 会把响应体片段、原文甚至密钥带进消息，写日志等于泄露）。
+ */
+export type ErrorCategory =
+  | 'timeout'
+  | 'network'
+  | 'http'
+  | 'auth'
+  | 'parse'
+  | 'length-mismatch'
+  | 'unknown'
+
+export function errorCategory(error: unknown): ErrorCategory {
+  const name = error instanceof Error ? error.name : ''
+  const message = error instanceof Error ? error.message.toLowerCase() : ''
+  if (
+    name === 'AbortError' ||
+    name === 'TimeoutError' ||
+    message.includes('timeout') ||
+    message.includes('aborted')
+  ) {
+    return 'timeout'
+  }
+  if (message.includes('length mismatch')) return 'length-mismatch'
+  if (message.includes('unauthorized') || message.includes('forbidden') || message.includes('api key')) {
+    return 'auth'
+  }
+  if (
+    message.includes('fetch failed') ||
+    message.includes('network') ||
+    message.includes('econnrefused') ||
+    message.includes('enotfound') ||
+    message.includes('econnreset')
+  ) {
+    return 'network'
+  }
+  if (/http \d{3}/.test(message)) return 'http'
+  if (message.includes('json') || message.includes('parse')) return 'parse'
+  return 'unknown'
+}
+
 export class Translator {
   private readonly cache: LruCache<string>
   private readonly negative: NegativeCache
@@ -160,9 +202,9 @@ export class Translator {
         )
         return { translations: results, provider: provider.id }
       } catch (error) {
-        const reason = error instanceof Error ? error.message : String(error)
+        // 只记类别，绝不记第三方原始错误文本（可能含原文/密钥）。
         this.log?.(
-          `[cotx] ${provider.id} failed after ${Date.now() - startedAt}ms: ${reason}` +
+          `[cotx] ${provider.id} failed after ${Date.now() - startedAt}ms: ${errorCategory(error)}` +
             ` (segments ${misses.length}, chars ${chars})`,
         )
       }
@@ -201,7 +243,7 @@ export class Translator {
       try {
         return await provider.listModels(timeoutSignal(PROBE_TIMEOUT_MS * 2), fetchImpl)
       } catch (error) {
-        this.log?.(`[cotx] listModels failed: ${error instanceof Error ? error.message : String(error)}`)
+        this.log?.(`[cotx] listModels failed: ${errorCategory(error)}`)
       }
     }
     return []
