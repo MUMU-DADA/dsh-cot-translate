@@ -136,9 +136,9 @@ test('end-to-end：provider 全挂时 200 + 空译文（fail-open）', async (co
     logger: { info() {} },
     get: () => undefined,
   }
-  // 指向一个必然连不上的端口，且关掉 google 兜底。
+  // 指向一个必然连不上的端口，且关掉 google 兜底与本地服务自启。
   host.apply(ctx, {
-    ollama: { baseURL: 'http://127.0.0.1:1', model: 'none' },
+    ollama: { baseURL: 'http://127.0.0.1:1', model: 'none', autostart: false },
     google: { enabled: false },
     chain: ['ollama', 'google'],
     timeoutMs: 1000,

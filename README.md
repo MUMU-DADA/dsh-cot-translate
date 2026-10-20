@@ -56,7 +56,8 @@ dsh-cot-translate/
 │   ├── host/
 │   │   ├── config.ts         # 配置归一化（纯函数，不引 schemastery）
 │   │   ├── cache.ts          # LRU + 失败负缓存
-│   │   ├── providers.ts      # ollama / google 适配器
+│   │   ├── providers.ts      # ollama / google 适配器 + 模型自动选择
+│   │   ├── runtime.ts        # 本地服务按需拉起（headless，无 GUI）
 │   │   ├── chain.ts          # provider 链编排、超时、fail-open
 │   │   └── routes.ts         # HTTP 路由：校验、状态码、trust fence
 │   └── client/
@@ -102,14 +103,25 @@ dsh plugin --profile web remove dsh-cot-translate
 
 ## 本地模型（可选，但推荐）
 
+插件**只调用命令行服务**，不依赖任何 GUI 应用：
+
 ```powershell
-# 装 Ollama 后拉模型（约 4.5GB，Q4_K_M）
-ollama pull kaelri/hy-mt2:7b-q4_K_M
-# 确认可达：curl http://127.0.0.1:11434/api/tags
+# 1) 装 Ollama（只用它的命令行；托盘应用不用、已从开机自启移除）
+winget install --id Ollama.Ollama -e
+
+# 2) 拉一个 Hy-MT2（1.8B Q4 约 1.1GB，够快；想要更好质量可换 7B Q4 约 4.5GB）
+ollama pull kaelri/hy-mt2:1.8b-q4_K_M
+# ollama pull kaelri/hy-mt2:7b-q4_K_M
 ```
 
-没装 Ollama 时插件会自动降级到免费 Google 接口；两者都不可用时显示原文（fail-open），
-界面不会报错。`GET /_cotx/providers` 可以看到每一档的实际可用性。
+**不用手动启动服务**：插件发现本地服务没在跑，会自动 `ollama serve`（headless、无窗口、
+无托盘），等它就绪后继续翻译；模型按 `keep_alive=5m` 空闲后自动卸载显存。
+插件也**不打包模型**（见 [ADR-016](docs/DECISIONS.md)）——模型放 `~/.ollama`，换模型不用重装插件。
+
+实测（10GB 级 NVIDIA 独显，1.8B Q4）：冷启动 2.2s、热调用 67–350ms；首次拉起服务 + 加载 + 翻译约 7s。
+
+没装本地模型时插件自动降级到免费 Google 接口；两者都不可用时显示原文（fail-open），
+界面不会报错。`GET /_cotx/providers` 可以看到每一档的实际可用性和当前选中的模型。
 
 ## 参考
 

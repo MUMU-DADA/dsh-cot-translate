@@ -43,9 +43,10 @@
 - **provider 统一接口**（`src/host/providers.ts`）
   - `translate(segments, target, signal, fetch) => string[]`：逐段翻译，段数与输入必须等长；
   - `probe(signal, fetch)`：可用性探测；`listModels?`：可选。
-  - `ollama`：`POST {baseURL}/api/chat`，`stream: false`，模型如 `kaelri/hy-mt2:7b-q4_K_M`；
-    采样参数按官方建议（temp 0.7 / top_p 0.6 / top_k 20 / repeat_penalty 1.05）；
-    可选 `keep_alive` 透传给 Ollama。
+  - `ollama`：`POST {baseURL}/api/chat`，`stream: false`，模型名默认 `auto`
+    （从 `/api/tags` 里按偏好挑已拉取的）；采样参数按官方建议
+    （temp 0.7 / top_p 0.6 / top_k 20 / repeat_penalty 1.05）；可选 `keep_alive`；
+    服务未启动时按需拉起 `ollama serve`（headless，`ollama.autostart` 可关）。
   - `google`：`translate_a/single` 免费接口，最后兜底，可配置关闭。
   - `openai` / `anthropic`：暂未实现（M4 之后按需）。
 - **配置**（`src/host/config.ts` 纯函数归一化，不引入 schemastery，见 ADR-012）

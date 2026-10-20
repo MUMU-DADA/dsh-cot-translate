@@ -46,9 +46,16 @@
 - ✅ 日志只记 provider / 段数 / 字符数 / 耗时，不记原文
 - ✅ 测试：provider 请求体、链降级、负缓存、校验、路由状态码、**真 HTTP + 假 Ollama 端到端**
 
-**验收方式**：`npm test`（26 项全绿）。真机验证要等重启桌面端后 `curl 127.0.0.1:<port>/_cotx/providers`。
-**注意**：本机目前**没有安装 Ollama**，所以现在只有 google 兜底或 fail-open；装好 Ollama 并
-`ollama pull kaelri/hy-mt2:7b-q4_K_M` 后才会走本地模型。
+**验收方式**：`npm test`（37 项全绿）。真机验证要等重启桌面端后 `curl 127.0.0.1:<port>/_cotx/providers`。
+
+### M2 附：本地模型就绪 ✅（2026-10-19 晚，本机实测）
+
+- ✅ 安装 headless Ollama 0.40.5（只用命令行，托盘/自启已移除，见 ADR-015）
+- ✅ `kaelri/hy-mt2:1.8b-q4_K_M`（1.1GB）拉取完成，100% GPU 1.5GB
+- ✅ 实测：冷启动 2.18s、热调用 67–350ms；插件停服后自动拉起 + 翻译 7.08s
+- ✅ `model: auto` 自动选已拉取模型（7B Q4 优先），`ollama.autostart`/`bin` 可配置
+- ✅ 译文质量抽检：直译流畅，行内代码原样保留（见 RESEARCH §9）
+- ⬜ 7B Q4（4.5GB）未拉取；需要时 `ollama pull` 即可，代码不用改
 
 ## M3 client 翻译流水线 🟡（核心已可用，实时增量未做）
 

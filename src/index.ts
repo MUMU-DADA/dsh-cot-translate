@@ -99,6 +99,7 @@ export {
   createGoogleProvider,
   createOllamaProvider,
   parseGooglePayload,
+  pickModel,
   stripWrapping,
   targetLabel,
 } from './host/providers'
@@ -113,3 +114,5 @@ export {
   sendJson,
   sendMethodNotAllowed,
 } from './host/routes'
+export { defaultOllamaBin, ensureOllamaServer } from './host/runtime'
+export type { EnsureResult, OllamaRuntimeDeps } from './host/runtime'

@@ -110,7 +110,7 @@ test('译文字符串清洗：去引号与“译文：”前缀', () => {
 test('ollama 适配器：请求体、keep_alive 与采样参数', async () => {
   const fetchImpl = fakeFetch(() => jsonResponse(OLLAMA_OK))
   const provider = host.createOllamaProvider(
-    host.normalizeConfig({ ollama: { model: 'kaelri/hy-mt2:7b-q4_K_M', keepAlive: '5m' } }).ollama,
+    host.normalizeConfig({ ollama: { model: 'kaelri/hy-mt2:7b-q4_K_M', keepAlive: '5m', autostart: false } }).ollama,
   )
   const out = await provider.translate(['Think step one.'], 'zh-Hans', AbortSignal.timeout(1000), fetchImpl)
 
@@ -124,6 +124,119 @@ test('ollama 适配器：请求体、keep_alive 与采样参数', async () => {
   assert.equal(body.messages[0].role, 'system')
   assert.match(body.messages[0].content, /Simplified Chinese/)
   assert.equal(body.messages[1].content, 'Think step one.')
+})
+
+test('模型自动选择：优先 7B Q4，其次 1.8B，其次其它翻译模型', () => {
+  assert.deepEqual(
+    host.pickModel([
+      'kaelri/hy-mt2:1.8b-q4_K_M',
+      'kaelri/hy-mt2:7b-q8_0',
+      'kaelri/hy-mt2:7b-q4_K_M',
+    ]),
+    'kaelri/hy-mt2:7b-q4_K_M',
+  )
+  assert.equal(host.pickModel(['kaelri/hy-mt2:1.8b-q4_K_M']), 'kaelri/hy-mt2:1.8b-q4_K_M')
+  assert.equal(host.pickModel(['translategemma:4b']), 'translategemma:4b')
+  assert.equal(host.pickModel(['some-other:latest']), 'some-other:latest')
+  assert.equal(host.pickModel([]), undefined)
+})
+
+test('model=auto：先查 /api/tags 选模型，标签缓存 60 秒', async () => {
+  const calls = []
+  let chatModel
+  const fetchImpl = fakeFetch((url, init) => {
+    if (url.endsWith('/api/tags')) {
+      calls.push('tags')
+      return jsonResponse({ models: [{ name: 'kaelri/hy-mt2:1.8b-q4_K_M' }] })
+    }
+    chatModel = JSON.parse(init.body).model
+    calls.push('chat')
+    return jsonResponse(OLLAMA_OK)
+  })
+  const provider = host.createOllamaProvider(
+    host.normalizeConfig({
+      ollama: { model: 'auto', baseURL: 'http://fake:1', autostart: false },
+    }).ollama,
+  )
+  // 换一个 baseURL，避开其它用例写进模块级标签缓存的条目。
+  const first = await provider.translate(['hi'], 'zh-Hans', AbortSignal.timeout(1000), fetchImpl)
+  assert.deepEqual(first, ['中文译文'])
+  assert.equal(chatModel, 'kaelri/hy-mt2:1.8b-q4_K_M')
+  assert.deepEqual(calls, ['tags', 'chat'])
+
+  await provider.translate(['again'], 'zh-Hans', AbortSignal.timeout(1000), fetchImpl)
+  assert.deepEqual(calls, ['tags', 'chat', 'chat'], '第二次应命中标签缓存，不再查 /api/tags')
+})
+
+test('probe 在 auto 模式下报出实际选中的模型', async () => {
+  const fetchImpl = fakeFetch(() => jsonResponse({ models: [{ name: 'kaelri/hy-mt2:7b-q4_K_M' }] }))
+  const provider = host.createOllamaProvider(
+    host.normalizeConfig({ ollama: { model: 'auto', baseURL: 'http://fake-probe:1' } }).ollama,
+  )
+  const probe = await provider.probe(AbortSignal.timeout(1000), fetchImpl)
+  assert.equal(probe.available, true)
+  assert.match(probe.detail, /7b-q4_K_M/)
+})
+
+test('本地服务按需拉起：连不上时 spawn 一次并等就绪', async () => {
+  const launched = []
+  let tagsCalls = 0
+  const fetchImpl = fakeFetch((url) => {
+    if (url.endsWith('/api/tags')) {
+      tagsCalls += 1
+      // 前两次（拉起前的探测 + 拉起后的第一次轮询）失败，之后服务就绪。
+      return tagsCalls <= 2
+        ? jsonResponse({}, 503)
+        : jsonResponse({ models: [{ name: 'kaelri/hy-mt2:1.8b-q4_K_M' }] })
+    }
+    return jsonResponse(OLLAMA_OK)
+  })
+  const config = host.normalizeConfig({
+    ollama: { model: 'auto', baseURL: 'http://autostart:1', autostart: true, bin: 'C:/fake/ollama.exe' },
+    chain: ['ollama'],
+  })
+  const translator = new host.Translator({
+    config,
+    fetchImpl,
+    ollamaRuntime: {
+      launch: (bin) => launched.push(bin),
+      sleep: async () => {},
+      waitMs: 5000,
+    },
+  })
+
+  const result = await translator.translate(['hello'])
+  assert.deepEqual(result.translations, ['中文译文'])
+  assert.deepEqual(launched, ['C:/fake/ollama.exe'], '应拉起一次本地服务')
+})
+
+test('autostart=false 时不拉起进程', async () => {
+  const launched = []
+  const fetchImpl = fakeFetch(() => jsonResponse({}, 503))
+  const config = host.normalizeConfig({
+    ollama: { model: 'auto', baseURL: 'http://no-autostart:1', autostart: false },
+    chain: ['ollama'],
+    google: { enabled: false },
+  })
+  const translator = new host.Translator({
+    config,
+    fetchImpl,
+    ollamaRuntime: { launch: (bin) => launched.push(bin), sleep: async () => {}, waitMs: 100 },
+  })
+  const result = await translator.translate(['hello'])
+  assert.deepEqual(result.translations, [''])
+  assert.deepEqual(launched, [])
+})
+
+test('ensureOllamaServer：已就绪时不拉起', async () => {
+  const launched = []
+  const result = await host.ensureOllamaServer({
+    baseURL: 'http://already-up:1',
+    fetchImpl: fakeFetch(() => jsonResponse({ models: [] })),
+    deps: { launch: (bin) => launched.push(bin) },
+  })
+  assert.deepEqual(result, { started: false, ready: true })
+  assert.deepEqual(launched, [])
 })
 
 test('google 适配器：URL 参数与响应解析', async () => {
@@ -141,7 +254,7 @@ test('provider 链：第一个失败自动降级到下一个', async () => {
     return jsonResponse([[['兜底译文', 'hello']]])
   })
   const translator = new host.Translator({
-    config: host.normalizeConfig({}),
+    config: host.normalizeConfig({ ollama: { model: 'kaelri/hy-mt2:7b-q4_K_M', autostart: false } }),
     fetchImpl,
   })
   const result = await translator.translate(['hello'])
@@ -155,7 +268,7 @@ test('provider 链：全挂则 fail-open + 负缓存命中不再打模型', asyn
     calls += 1
     return jsonResponse({}, 500)
   })
-  const translator = new host.Translator({ config: host.normalizeConfig({}), fetchImpl })
+  const translator = new host.Translator({ config: host.normalizeConfig({ ollama: { autostart: false } }), fetchImpl })
 
   const first = await translator.translate(['hello'])
   assert.deepEqual(first.translations, [''])
@@ -170,7 +283,10 @@ test('provider 链：全挂则 fail-open + 负缓存命中不再打模型', asyn
 
 test('provider 链：缓存命中标记 provider=cache', async () => {
   const fetchImpl = fakeFetch(() => jsonResponse(OLLAMA_OK))
-  const translator = new host.Translator({ config: host.normalizeConfig({}), fetchImpl })
+  const translator = new host.Translator({
+    config: host.normalizeConfig({ ollama: { model: 'kaelri/hy-mt2:7b-q4_K_M', autostart: false } }),
+    fetchImpl,
+  })
   const first = await translator.translate(['hello'])
   assert.equal(first.provider, 'ollama')
   const second = await translator.translate(['hello'])
@@ -218,7 +334,7 @@ test('registerRoutes：POST 翻译成功 / 坏请求 400 / 方法 405 / trust fe
     return () => {}
   }
   const fetchImpl = fakeFetch(() => jsonResponse(OLLAMA_OK))
-  const config = host.normalizeConfig({})
+  const config = host.normalizeConfig({ ollama: { model: 'kaelri/hy-mt2:7b-q4_K_M', autostart: false } })
   const translator = new host.Translator({ config, fetchImpl })
   let guardReject = false
   host.registerRoutes({

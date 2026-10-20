@@ -11,6 +11,8 @@
 
 import type { ProviderKind } from '../shared'
 import type { CotConfig } from './config'
+import type { OllamaRuntimeDeps } from './runtime'
+import { ensureOllamaServer } from './runtime'
 
 /** 只取 fetch 的可调用签名，便于单测注入假实现。 */
 export type FetchLike = (input: string, init?: RequestInit) => Promise<Response>
@@ -88,8 +90,109 @@ const HY_MT2_OPTIONS = {
   repeat_penalty: 1.05,
 } as const
 
+/** `/api/tags` 的结果缓存时长：模型列表变动不频繁，别每次翻译都探一次。 */
+const TAGS_TTL_MS = 60_000
+
+/** 已拉取模型列表的进程内缓存（按 baseURL）。 */
+const tagsCache = new Map<string, { at: number; models: string[] }>()
+
+/** Ollama 的模型偏好顺序：先大后小，同档优先 Q4（显存友好）。 */
+const MODEL_PREFERENCE: readonly string[] = [
+  '7b-q4_k_m',
+  '7b-q4_k_s',
+  '7b-q6_k',
+  '7b-q8_0',
+  '7b',
+  '1.8b-q8_0',
+  '1.8b-q4_k_m',
+  '1.8b',
+]
+
+/**
+ * 从已拉取的模型里挑一个（`model: "auto"` 时用）。
+ *
+ * 先找 Hy-MT2，找不到再考虑其它翻译专用模型，最后退回列表第一个 ——
+ * 用户的模型名/量化档和默认值不一样时，插件不该因此失效。
+ */
+export function pickModel(available: readonly string[]): string | undefined {
+  if (available.length === 0) return undefined
+  const entries = available.map((name) => ({ name, lower: name.toLowerCase() }))
+  const hy = entries.filter((entry) => entry.lower.includes('hy-mt2'))
+  const pool = hy.length > 0 ? hy : entries
+  for (const preference of MODEL_PREFERENCE) {
+    const hit = pool.find((entry) => entry.lower.includes(preference))
+    if (hit !== undefined) return hit.name
+  }
+  const otherTranslator = entries.find((entry) =>
+    /translate|nllb|opus-mt|madlad|m2m100/.test(entry.lower),
+  )
+  if (otherTranslator !== undefined) return otherTranslator.name
+  return pool[0]?.name
+}
+
+/** 取 Ollama 已拉取模型列表（带 60 秒缓存）。 */
+async function listTags(
+  base: string,
+  signal: AbortSignal,
+  fetchImpl: FetchLike,
+): Promise<string[]> {
+  const cached = tagsCache.get(base)
+  if (cached !== undefined && Date.now() - cached.at < TAGS_TTL_MS) return cached.models
+  const response = await fetchImpl(`${base}/api/tags`, { signal })
+  if (!response.ok) throw new Error(`ollama: HTTP ${response.status}`)
+  const payload = (await response.json()) as { models?: Array<{ name?: unknown }> }
+  const models = (payload.models ?? [])
+    .map((model) => (typeof model.name === 'string' ? model.name : ''))
+    .filter((name) => name !== '')
+  tagsCache.set(base, { at: Date.now(), models })
+  return models
+}
+
+/** 计算该段原文最多需要多少输出 token，避免模型跑飞。 */
+function numPredictFor(text: string): number {
+  return Math.min(1024, Math.max(128, Math.ceil(text.length * 2)))
+}
+
+/** 已确认可用的本地服务（baseURL + bin + fetch 实现），拉起过一次就不再重复。 */
+const runtimeReady = new Set<string>()
+let runtimeStarting: Promise<unknown> | undefined
+
+/**
+ * 确保本地服务在跑：按需拉起 `ollama serve`（headless）。
+ * 用模块级 promise 去重，多个并发请求只拉一次。
+ */
+async function ensureRuntimeOnce(
+  config: CotConfig['ollama'],
+  fetchImpl: FetchLike,
+  deps: OllamaRuntimeDeps | undefined,
+): Promise<void> {
+  const key = `${config.baseURL}|${config.bin}`
+  if (runtimeReady.has(key)) return
+  if (runtimeStarting === undefined) {
+    runtimeStarting = ensureOllamaServer({
+      baseURL: config.baseURL,
+      ...(config.bin === '' ? {} : { bin: config.bin }),
+      fetchImpl,
+      ...(deps === undefined ? {} : { deps }),
+    })
+      .then((result) => {
+        if (result.ready) runtimeReady.add(key)
+      })
+      .catch(() => {
+        // 拉起失败不影响主流程：翻译会降级到下一档 provider。
+      })
+      .finally(() => {
+        runtimeStarting = undefined
+      })
+  }
+  await runtimeStarting
+}
+
 /** Ollama 本地 provider。 */
-export function createOllamaProvider(config: CotConfig['ollama']): TranslateProvider {
+export function createOllamaProvider(
+  config: CotConfig['ollama'],
+  runtimeDeps?: OllamaRuntimeDeps,
+): TranslateProvider {
   const base = config.baseURL
   return {
     id: 'ollama',
@@ -97,13 +200,23 @@ export function createOllamaProvider(config: CotConfig['ollama']): TranslateProv
     label: '本地 Hy-MT2',
     model: config.model,
     async translate(segments, target, signal, fetchImpl) {
+      // 服务没起来时先按需拉起（无 GUI 的后台进程），再翻译。
+      if (config.autostart) await ensureRuntimeOnce(config, fetchImpl, runtimeDeps)
+      // `auto`：按已拉取的模型自动挑一个；显式模型名则直接用，不多发一次探测。
+      const model =
+        config.model === 'auto'
+          ? (pickModel(await listTags(base, signal, fetchImpl)) ??
+            (() => {
+              throw new Error('ollama: no model pulled')
+            })())
+          : config.model
       const out: string[] = []
       for (const text of segments) {
         const body: Record<string, unknown> = {
-          model: config.model,
+          model,
           messages: ollamaMessages(text, target),
           stream: false,
-          options: HY_MT2_OPTIONS,
+          options: { ...HY_MT2_OPTIONS, num_predict: numPredictFor(text) },
         }
         if (config.keepAlive !== '') body.keep_alive = config.keepAlive
         const response = await fetchImpl(`${base}/api/chat`, {
@@ -124,27 +237,22 @@ export function createOllamaProvider(config: CotConfig['ollama']): TranslateProv
     },
     async probe(signal, fetchImpl) {
       try {
-        const response = await fetchImpl(`${base}/api/tags`, { signal })
-        if (!response.ok) return { available: false, detail: `HTTP ${response.status}` }
-        const payload = (await response.json()) as { models?: Array<{ name?: unknown }> }
-        const names = (payload.models ?? [])
-          .map((model) => (typeof model.name === 'string' ? model.name : ''))
-          .filter((name) => name !== '')
-        if (!names.includes(config.model)) {
-          return { available: true, detail: 'model-not-pulled' }
+        const models = await listTags(base, signal, fetchImpl)
+        if (config.model !== 'auto') {
+          return models.includes(config.model)
+            ? { available: true, detail: `model: ${config.model}` }
+            : { available: true, detail: 'model-not-pulled' }
         }
-        return { available: true }
+        const picked = pickModel(models)
+        return picked === undefined
+          ? { available: true, detail: 'model-not-pulled' }
+          : { available: true, detail: `model: ${picked}` }
       } catch (error) {
         return { available: false, detail: messageOf(error) }
       }
     },
     async listModels(signal, fetchImpl) {
-      const response = await fetchImpl(`${base}/api/tags`, { signal })
-      if (!response.ok) throw new Error(`ollama: HTTP ${response.status}`)
-      const payload = (await response.json()) as { models?: Array<{ name?: unknown }> }
-      return (payload.models ?? [])
-        .map((model) => (typeof model.name === 'string' ? model.name : ''))
-        .filter((name) => name !== '')
+      return listTags(base, signal, fetchImpl)
     },
   }
 }

@@ -17,9 +17,14 @@ export interface OllamaConfig {
   enabled: boolean
   /** 只连本机回环或用户明确指定的地址；不监听、不暴露。 */
   baseURL: string
+  /** 模型名；`auto` = 从 `/api/tags` 里按偏好挑一个已拉取的。 */
   model: string
   /** 透传给 Ollama 的 keep_alive（如 "5m" / 0）；空串表示不指定。 */
   keepAlive: string
+  /** 连不上时是否尝试拉起 `ollama serve`（无 GUI，后台进程）。 */
+  autostart: boolean
+  /** 可执行文件路径；空串 = 按平台常见位置自动找。 */
+  bin: string
 }
 
 export interface GoogleConfig {
@@ -52,15 +57,20 @@ const DEFAULT_GOOGLE_ENDPOINT = 'https://translate.googleapis.com/translate_a/si
 export const DEFAULT_CONFIG: CotConfig = {
   enabled: true,
   target: 'zh-Hans',
-  timeoutMs: 12000,
+  // 首次调用要等模型从磁盘加载进显存（1.8B 约 1-2s，7B 约 3-5s），给足余量。
+  timeoutMs: 20000,
   cacheSize: 600,
   negativeTtlMs: 30000,
   chain: ['ollama', 'google'],
   ollama: {
     enabled: true,
     baseURL: DEFAULT_OLLAMA_BASE,
-    model: 'kaelri/hy-mt2:7b-q4_K_M',
+    // auto = 从 `/api/tags` 里按偏好挑一个已拉取的模型（见 providers.pickModel），
+    // 用户拉的是 1.8B 还是 7B、量化档是什么都不影响插件工作。
+    model: 'auto',
     keepAlive: '5m',
+    autostart: true,
+    bin: '',
   },
   google: {
     enabled: true,
@@ -127,6 +137,8 @@ export function normalizeConfig(raw: unknown): CotConfig {
       baseURL,
       model: text(ollama.model, DEFAULT_CONFIG.ollama.model).slice(0, 200),
       keepAlive: typeof ollama.keepAlive === 'string' ? ollama.keepAlive.trim() : '',
+      autostart: flag(ollama.autostart, DEFAULT_CONFIG.ollama.autostart),
+      bin: typeof ollama.bin === 'string' ? ollama.bin.trim() : '',
     },
     google: {
       enabled: flag(google.enabled, DEFAULT_CONFIG.google.enabled),

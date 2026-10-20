@@ -167,7 +167,38 @@ Ollama 现成标签（已核实）：
 仍待确认：
 
 1. `settings.general.item` 条目的注册参数与 `store: defineStore(...)` 用法（M4 设置页要用）。
-2. `shell.overlay` 浮层的定位/层级约定，以及“跟随某条 Think 行”是否可行（M1b 实时方案）。
-3. Ollama 在本机由插件拉起的可行性（第三方 README 称支持 Windows 自动安装），以及 `OLLAMA_KEEP_ALIVE` 的暴露方式。
-4. 是否需要 `dsh.client.external`：目前只 require `react`（基线模块），暂不需要；一旦用
-   `@deepseek-ai/dsh-client-ui-primitives` / `dsh-client-store` 再补声明。
+2. `shell.overlay` 浮层的定位/层级约定（已不需要：渲染走 ADR-014 的 DOM 注入）。
+3. ~~Ollama 在本机由插件拉起的可行性~~ → 已核实可行：`spawn(ollama.exe, ['serve'], {detached, stdio:'ignore'})`，
+   等 `/api/tags` 就绪；实测（见 §9）。
+4. 是否需要 `dsh.client.external`：目前 client bundle 只 require `react`（基线模块，其余零依赖），暂不需要。
+
+---
+
+## 9. 本地模型实测（2026-10-19 晚，本机）
+
+**安装形态**：Ollama 0.40.5（winget 安装包），但**只用命令行** `ollama.exe serve`；
+安装包自带的托盘应用自启已移除（ADR-015），实测进程列表里只有 `ollama.exe`。
+
+| 项 | 实测值 |
+|---|---|
+| 模型 | `kaelri/hy-mt2:1.8b-q4_K_M`，1.1 GB |
+| 加载后显存 | 1.5 GB，**100% GPU**（10GB 级 NVIDIA 独显） |
+| 冷启动（卸载后首次） | 2.18 s |
+| 热调用（单段 ≤100 字符） | 67 ms / 350 ms（两段不同文本） |
+| 首次下载后第一次调用 | 46.8 s（1.1GB blob 刚落到磁盘，页缓存冷 + Defender 实时扫描；之后就正常了） |
+| 空载卸载 | `OLLAMA_KEEP_ALIVE=5m` 生效，`ollama ps` 显示 4 分钟后卸载 |
+| 插件拉起服务 | 服务停掉后一次 `translate()`：拉起 + 就绪 + 加载 + 翻译共 7.08 s |
+
+**译文质量（1.8B Q4，直译风格）**：
+
+| 原文 | 译文 |
+|---|---|
+| I should check the repository layout first, then look at the docs before editing anything. | 我应该先检查仓库结构，然后查看文档，再编辑任何内容。 |
+| The failing test is caused by a stale lockfile, so regenerating it should fix the issue. | 失败的测试是由过期的锁文件引起的，重新生成它应该可以解决问题。 |
+| Run \`npm test\` before touching the host half. | 在接触主机之前运行 \`npm test\`。 |
+
+观察：流畅、术语基本正确，`host half` 这类自造词会被直译（可接受）；
+行内代码被完整保留（剔除器的分段保留生效）。
+
+**备选量化档**：7B Q4_K_M 约 4.5 GB，显存 4.5 GB、质量更好、延迟约 3–5 倍；
+`auto` 模式会优先选它（ADR-015），需要时 `ollama pull kaelri/hy-mt2:7b-q4_K_M` 即可，不用改代码。
