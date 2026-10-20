@@ -156,6 +156,18 @@ test('设置页：挂载后渲染开关、时机、模型、端口、缓存与�
         assert.ok(zhKeys.includes(key), `${pack.id} 出现未知 key: ${key}`)
       }
     }
+    // 插值位必须与基准一致（否则 {version}/{limit} 这类会显示成字面量）
+    const placeholders = (text) =>
+      [...String(text).matchAll(/\{(\w+)\}/g)].map((match) => match[1]).sort()
+    for (const [id, dictionary] of Object.entries(client.LOCALES)) {
+      for (const [key, value] of Object.entries(dictionary)) {
+        assert.deepEqual(
+          placeholders(value),
+          placeholders(client.LOCALES.zh[key]),
+          `${id} 的 ${key} 插值位不一致`,
+        )
+      }
+    }
   } finally {
     try {
       root.unmount()
