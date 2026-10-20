@@ -10,6 +10,7 @@
  */
 
 import type { ProviderState, TranslateResponse } from '../shared'
+import { LANGUAGES, type Language } from './languages'
 import { Translator } from './chain'
 import type { CotConfig, ProviderId } from './config'
 import { normalizeConfig } from './config'
@@ -58,6 +59,8 @@ export interface ControlState {
   bundledReady: boolean
   /** 磁盘译文缓存的占用情况。 */
   cache: CacheStats
+  /** 可选的目标语言（设置页下拉用）。 */
+  languages: readonly Language[]
 }
 
 /** 自测结果。 */
@@ -160,6 +163,7 @@ export class Control {
       target: config.target,
       bundledReady: models.some((model) => model.bundled && model.installed),
       cache: this.persistent.stats(),
+      languages: LANGUAGES,
     }
   }
 

@@ -208,13 +208,16 @@ export function modelLabel(path: string): string {
   return basename(path).replace(/\.gguf$/i, '')
 }
 
-/** 从 baseURL 取端口（非法时回退 8080）。 */
+/** 本地服务默认端口：8080 太容易被别的应用占用（实测被一个 python 应用抢过）。 */
+const DEFAULT_PORT = '18099'
+
+/** 从 baseURL 取端口（非法时回退默认端口）。 */
 export function portOf(baseURL: string): string {
   try {
     const url = new URL(baseURL)
-    return url.port === '' ? '8080' : url.port
+    return url.port === '' ? DEFAULT_PORT : url.port
   } catch {
-    return '8080'
+    return DEFAULT_PORT
   }
 }
 

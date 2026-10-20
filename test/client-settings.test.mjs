@@ -55,6 +55,11 @@ const STATE = {
     limitBytes: 50 * 1024 * 1024,
     dir: 'C:/tmp/cache',
   },
+  languages: [
+    { code: 'zh-Hans', en: 'Simplified Chinese', zh: '简体中文' },
+    { code: 'en', en: 'English', zh: '英语' },
+    { code: 'ja', en: 'Japanese', zh: '日语' },
+  ],
 }
 
 test('设置页：挂载后渲染开关、时机与模型列表', async () => {
@@ -113,6 +118,7 @@ test('设置页：挂载后渲染开关、时机与模型列表', async () => {
     assert.ok(text.includes('llamacpp → google'), '应显示当前翻译链')
     assert.ok(text.includes('3.0 MB / 50.0 MB'), '应显示缓存用量')
     assert.ok(text.includes('清理缓存'), '应有清理缓存按钮')
+    assert.ok(text.includes('译文语言'), '应有目标语言选择')
     root.unmount()
   } finally {
     globalThis.window = previous.window

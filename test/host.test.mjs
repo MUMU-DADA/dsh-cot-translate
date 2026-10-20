@@ -744,3 +744,32 @@ test('provider 链：磁盘缓存命中不再打模型（跨实例）', withTemp
   assert.equal(cached.provider, 'cache')
   assert.equal(secondFetch.calls.length, 0, '磁盘缓存命中后不应调用 provider')
 }))
+test('多语言：提示词用完整英文语言名（缩写会掉质量）', () => {
+  assert.equal(host.targetLabel('zh-Hans'), 'Simplified Chinese')
+  assert.equal(host.targetLabel('zh-Hant'), 'Traditional Chinese')
+  assert.equal(host.targetLabel('zh-CN'), 'Simplified Chinese')
+  assert.equal(host.targetLabel('fr'), 'French')
+  assert.equal(host.targetLabel('de'), 'German')
+  assert.equal(host.targetLabel('ja'), 'Japanese')
+  assert.equal(host.targetLabel('ar'), 'Arabic')
+  assert.equal(host.targetLabel('yue'), 'Cantonese')
+  // 未知语言原样透传（不猜）
+  assert.equal(host.targetLabel('xx'), 'xx')
+  // 语言表覆盖模型卡的全部语言
+  assert.ok(host.LANGUAGES.length >= 33, '至少 33 种语言')
+  assert.equal(host.LANGUAGES.find((language) => language.code === 'fr').zh, '法语')
+})
+
+test('多语言：provider 请求体里是完整语言名', async () => {
+  let body
+  const fetchImpl = fakeFetch((_url, init) => {
+    body = JSON.parse(init.body)
+    return jsonResponse({ choices: [{ message: { content: 'Bonjour' } }] })
+  })
+  const provider = host.createLlamaCppProvider(
+    host.normalizeConfig({ llamacpp: { autostart: false } }).llamacpp,
+  )
+  await provider.translate(['hello'], 'fr', AbortSignal.timeout(1000), fetchImpl)
+  assert.match(body.messages[0].content, /French/)
+  assert.ok(!body.messages[0].content.includes('into fr '), '不能把缩写直接塞进提示词')
+})

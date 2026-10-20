@@ -13,6 +13,7 @@
 
 import type { ProviderKind } from '../shared'
 import type { CotConfig } from './config'
+import { languageLabel } from './languages'
 import type { LaunchPlan, RuntimeDeps } from './runtime'
 import {
   defaultLlamaServerBin,
@@ -61,19 +62,23 @@ export interface TranslateProvider {
 }
 
 /** 目标语言 → 提示词里用的语言名。 */
-const TARGET_LABELS: Record<string, string> = {
-  'zh-Hans': 'Simplified Chinese',
-  'zh-Hant': 'Traditional Chinese',
-  'zh-CN': 'Simplified Chinese',
-  'zh-TW': 'Traditional Chinese',
-  en: 'English',
-  ja: 'Japanese',
-  ko: 'Korean',
+/**
+ * llama-server 的 HTTP 错误：403/401 常见于**端口被别的程序占用**（对方返回自己的
+ * 鉴权错误），404 可能是老版本没有该端点。提示写清楚，避免误判成模型问题。
+ */
+function llamacppHttpError(status: number): string {
+  if (status === 401 || status === 403) {
+    return `llamacpp: HTTP ${status}（端口可能被其他程序占用，或需要 API key）`
+  }
+  return `llamacpp: HTTP ${status}`
 }
 
-/** target 的提示词写法；未知语言直接给原值。 */
+/**
+ * target 的提示词写法：已知语言给**完整英文名**（模型卡要求，缩写会掉质量），
+ * 未知语言原样透传。
+ */
 export function targetLabel(target: string): string {
-  return TARGET_LABELS[target] ?? target
+  return languageLabel(target)
 }
 
 /** target → Google 的 tl 参数。 */
@@ -277,7 +282,7 @@ export function createLlamaCppProvider(
           }),
           signal,
         })
-        if (!response.ok) throw new Error(`llamacpp: HTTP ${response.status}`)
+        if (!response.ok) throw new Error(llamacppHttpError(response.status))
         const payload = (await response.json()) as {
           choices?: Array<{ message?: { content?: unknown } }>
         }
@@ -302,7 +307,7 @@ export function createLlamaCppProvider(
     },
     async listModels(signal, fetchImpl) {
       const response = await fetchImpl(`${base}/v1/models`, { signal })
-      if (!response.ok) throw new Error(`llamacpp: HTTP ${response.status}`)
+      if (!response.ok) throw new Error(llamacppHttpError(response.status))
       const payload = (await response.json()) as { data?: Array<{ id?: unknown }> }
       return (payload.data ?? [])
         .map((model) => (typeof model.id === 'string' ? model.id : ''))

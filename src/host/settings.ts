@@ -9,6 +9,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
+import { isKnownLanguage } from './languages'
 
 /** 翻译时机：半自动 = 展开才翻；自动 = 生成完就翻（折叠着也翻）。 */
 export type TranslationMode = 'semi' | 'auto'
@@ -54,10 +55,12 @@ export function normalizeSettings(raw: unknown): CotSettings {
     typeof source.modelId === 'string' && source.modelId.trim() !== ''
       ? source.modelId.trim()
       : DEFAULT_SETTINGS.modelId
-  const target =
+  // 只接受 Hy-MT2 支持的语言码；写错/手改成不认识的码就回退默认。
+  const rawTarget =
     typeof source.target === 'string' && source.target.trim() !== ''
       ? source.target.trim().slice(0, 32)
       : DEFAULT_SETTINGS.target
+  const target = isKnownLanguage(rawTarget) ? rawTarget : DEFAULT_SETTINGS.target
   return {
     enabled: typeof source.enabled === 'boolean' ? source.enabled : DEFAULT_SETTINGS.enabled,
     mode,

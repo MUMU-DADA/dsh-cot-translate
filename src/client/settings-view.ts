@@ -51,6 +51,12 @@ interface CacheStatsLike {
   dir: string
 }
 
+interface LanguageLike {
+  code: string
+  en: string
+  zh: string
+}
+
 interface StateLike {
   settings: SettingsLike
   models: ModelStatusLike[]
@@ -60,6 +66,7 @@ interface StateLike {
   target: string
   bundledReady: boolean
   cache: CacheStatsLike
+  languages: LanguageLike[]
 }
 
 interface SelfTestLike {
@@ -379,6 +386,30 @@ export function SettingsSection(props: SettingsSectionProps): ReactElement {
     ),
   )
 
+  const targetRow = h(
+    'div',
+    { className: 'cotx-set-row' },
+    h(
+      'div',
+      { className: 'cotx-set-label' },
+      tr('set.target'),
+      h('div', { className: 'cotx-set-hint' }, tr('set.targetHint')),
+    ),
+    h(
+      'select',
+      {
+        className: 'cotx-set-select',
+        value: settings.target,
+        onChange: (event: { target: { value: string } }) => {
+          void patch({ target: event.target.value })
+        },
+      },
+      state.languages.map((language) =>
+        h('option', { key: language.code, value: language.code }, language.zh),
+      ),
+    ),
+  )
+
   const cacheRow = h(
     'div',
     { className: 'cotx-set-row' },
@@ -468,6 +499,7 @@ export function SettingsSection(props: SettingsSectionProps): ReactElement {
       void patch({ enabled: value })
     }, tr('set.enabledHint')),
     modeRow,
+    targetRow,
     h(
       'div',
       { className: 'cotx-set-row' },

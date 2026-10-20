@@ -29,6 +29,8 @@ const zh: NamespaceDictionary = {
   'set.modeHint': '半自动：手动点开思考才开始翻；自动：思考生成完就立刻翻译（折叠着也翻，展开即有译文）。',
   'set.modeSemi': '半自动',
   'set.modeAuto': '自动',
+  'set.target': '译文语言',
+  'set.targetHint': '翻译成哪种语言（支持 Hy-MT2 的 30+ 种语言；改完立即生效）。',
 
   // ── 设置页：模型 ──────────────────────────────────────────
   'set.model': '本地翻译模型',
@@ -85,6 +87,8 @@ const en: NamespaceDictionary = {
     'Semi-auto: translate when you expand a reasoning block. Auto: translate as soon as reasoning completes, even while collapsed.',
   'set.modeSemi': 'Semi-auto',
   'set.modeAuto': 'Auto',
+  'set.target': 'Target language',
+  'set.targetHint': 'Translate into this language (30+ languages supported by Hy-MT2; takes effect immediately).',
 
   // ── settings: models ──────────────────────────────────────
   'set.model': 'Local translation model',

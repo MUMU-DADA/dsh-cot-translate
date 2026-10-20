@@ -300,6 +300,8 @@ export {
   stopLocalServer,
 } from './host/runtime'
 export type { EnsureResult, LaunchPlan, RuntimeDeps } from './host/runtime'
+export { LANGUAGES, LANGUAGE_NAMES, isKnownLanguage, languageLabel } from './host/languages'
+export type { Language } from './host/languages'
 export { DEFAULT_CACHE_LIMIT_BYTES, PersistentCache } from './host/persistent-cache'
 export type { CacheStats } from './host/persistent-cache'
 export { createSessionModelProvider } from './host/session-model'
