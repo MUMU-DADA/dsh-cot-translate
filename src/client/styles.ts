@@ -70,10 +70,20 @@ const CSS = `
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.cotx-placeholder {
-  color: var(--dsw-alias-label-secondary, inherit);
+.cotx-placeholder,
+.cotx-translation {
+  color: var(--dsw-alias-label-primary, inherit);
   white-space: pre-wrap;
   word-break: break-word;
+}
+.cotx-translation[data-cot-phase='loading'] {
+  color: var(--dsw-alias-label-tertiary, inherit);
+  font-size: 12px;
+}
+.cotx-translation[data-cot-phase='failed'] {
+  color: var(--dsw-alias-label-tertiary, inherit);
+  font-size: 12px;
+  font-style: italic;
 }
 .cotx-note {
   margin-top: 6px;

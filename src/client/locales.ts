@@ -13,8 +13,9 @@ const zh: NamespaceDictionary = {
   'card.title': '思维链译文',
   'card.badge': '{segments} 段 · {chars} 字',
   'card.original': '原文',
-  'card.placeholder': '{index}（占位）这段思考的中文译文将在这里显示。',
-  'card.note': 'M1：数据链路已打通，译文留给 M2 接入本地模型。',
+  'card.loading': '翻译中…',
+  'card.failed': '翻译不可用，先看原文',
+  'card.note': '只翻译自然语言：代码、路径、链接保持原样。',
   'card.expand': '展开全部 {count} 段',
   'card.collapse': '收起',
 
@@ -40,8 +41,9 @@ const en: NamespaceDictionary = {
   'card.title': 'Chain-of-thought translation',
   'card.badge': '{segments} segments · {chars} chars',
   'card.original': 'Source',
-  'card.placeholder': '{index} (placeholder) The Chinese translation of this segment will appear here.',
-  'card.note': 'M1: data path wired; translations arrive in M2 with the local model.',
+  'card.loading': 'Translating…',
+  'card.failed': 'Translation unavailable; showing the original',
+  'card.note': 'Only natural language is translated; code, paths and links stay untouched.',
   'card.expand': 'Show all {count} segments',
   'card.collapse': 'Collapse',
 

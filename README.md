@@ -2,9 +2,9 @@
 
 在 DeepSeek Harness（DSH）Web 界面里，把模型的**思维链（reasoning / chain-of-thought）实时翻译成中文**的显示层插件，优先使用**本地模型**（Ollama / llama.cpp），全部失败时回退免费在线源。
 
-> 状态：**M1a** —— 数据链路打通：客户端已能通过 `ChatNodeStore.turnDataSource`
-> 读到含隐藏节点的 reasoning 文本，并以「回合译文卡片」形式渲染占位译文；
-> 真实翻译（host 半 + 本地模型）从 M2 开始。详见 [docs/ROADMAP.md](docs/ROADMAP.md)。
+> 状态：**M2 / M3 核心可用** —— 已能取 reasoning 文本、剔除代码/路径/URL、分批送同源
+> `/_cotx/translate`，在回合底部卡片里显示中文译文；本地 Ollama 优先，免费 Google 兜底，
+> 全失败显示原文。尚未做：实时形态（进行中的回合）、设置页。详见 [docs/ROADMAP.md](docs/ROADMAP.md)。
 > 目标运行时：DSH `0.2.0-rc.2` + cordis `4.0.4`（DSH Desktop 0.5.23 内置，实测读包版本）。
 
 ## 它要解决什么
@@ -37,17 +37,25 @@
 ```
 dsh-cot-translate/
 ├── src/
-│   ├── index.ts              # host 半：provider 适配 + 翻译 HTTP 接口（M2）
-│   ├── shared.ts             # 两端共享类型
+│   ├── index.ts              # host 半入口：name/inject/apply，注册 /_cotx/* 路由
+│   ├── shared.ts             # 两端共享类型（请求/响应/provider 状态）
+│   ├── host/
+│   │   ├── config.ts         # 配置归一化（纯函数，不引 schemastery）
+│   │   ├── cache.ts          # LRU + 失败负缓存
+│   │   ├── providers.ts      # ollama / google 适配器
+│   │   ├── chain.ts          # provider 链编排、超时、fail-open
+│   │   └── routes.ts         # HTTP 路由：校验、状态码、trust fence
 │   └── client/
 │       ├── index.ts          # client 半：注册 turnTail 条目、取 reasoning 数据
-│       ├── card.ts           # 回合译文卡片（M1 为占位文案）
+│       ├── card.ts           # 回合译文卡片（原文起手 + 译文/失败态）
+│       ├── strip.ts          # 分段保留技术片段 + 句子块 + 分批（纯函数）
+│       ├── translate.ts      # 同源请求 + client 缓存 + 拼回
 │       ├── chat.ts           # assistant-step 数据类型 + reasoning 抽取（纯函数）
 │       ├── cordis.ts         # 用到的 cordis 客户端契约（结构类型，不依赖运行时包）
 │       ├── styles.ts         # 运行时注入的卡片样式
 │       └── locales.ts        # 中英文案
-├── test/                     # node --test：加载构建产物做冒烟（pretest 自动 build）
-├── scripts/                  # esbuild 打包脚本（client 走 __ModuleLoader__ 包装）
+├── test/                     # node --test：加载构建产物做冒烟 / 真 HTTP 端到端
+├── scripts/                  # esbuild 打包脚本 + dump-slots.mjs（槽位目录提取器）
 ├── docs/                     # 决策 / 调研 / 架构 / 路线图
 ├── cordis.patch.yml          # 作为 bundle 安装时挂载 host 半的 patch
 ├── package.json              # dsh.bundle.patch + dsh.client 声明
@@ -60,15 +68,32 @@ dsh-cot-translate/
 npm install
 npm run build        # 产出 lib/index.js（host ESM）与 lib/client.js（浏览器 bundle）
 npm run typecheck
-npm test             # pretest 会先 build；加载 lib/client.js 在假 DOM 上冒烟
+npm test             # pretest 会先 build；26 项：纯逻辑 + 假 DOM 渲染 + 真 HTTP 端到端
+npm run slots chat   # 查 DSH 运行时里有哪些客户端槽位可用
 ```
 
-安装到 DSH profile（开发期）：
+## 安装 / 卸载
 
 ```powershell
+# 安装到 web profile（开发期用本仓库路径，pnpm 会建 junction；重建 lib 即生效）
 dsh plugin --profile web add <本仓库路径>
 # 然后完整重启 DSH Desktop —— HMR 不监听 node_modules
+
+# 卸载
+dsh plugin --profile web remove dsh-cot-translate
+# 同样需要完整重启
 ```
+
+## 本地模型（可选，但推荐）
+
+```powershell
+# 装 Ollama 后拉模型（约 4.5GB，Q4_K_M）
+ollama pull kaelri/hy-mt2:7b-q4_K_M
+# 确认可达：curl http://127.0.0.1:11434/api/tags
+```
+
+没装 Ollama 时插件会自动降级到免费 Google 接口；两者都不可用时显示原文（fail-open），
+界面不会报错。`GET /_cotx/providers` 可以看到每一档的实际可用性。
 
 ## 参考
 

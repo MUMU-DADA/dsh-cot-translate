@@ -1,5 +1,5 @@
 /**
- * M1 回合卡片：「这一回合模型都想了什么」的译文位。
+ * M1/M3 回合卡片：「这一回合模型都想了什么」的中文译文。
  *
  * 背景：`conversation.chat.node` 是 **keyed** 槽位，键域由 shell 的
  * `ChatNodeKind` 表固定，`assistant-step` 已被官方渲染器占用 —— 重复注册
@@ -9,17 +9,17 @@
  * 读到包含隐藏节点的 reasoning 数据。依据见 docs/RESEARCH.md §3 与
  * docs/DECISIONS.md ADR-011。
  *
- * 本文件只负责“把已取到的推理文本画出来”。M1 阶段译文是占位文案，
- * M2 接入 host 的 /_cotx/translate 后替换 `cotx-placeholder` 的内容。
+ * 组件只负责显示：取数在 client/index.ts 注入，翻译在 client/translate.ts。
  */
 
-import { createElement, useState } from 'react'
+import { createElement, useEffect, useState } from 'react'
 import type { ReactElement } from 'react'
 import type { AssistantStepData } from './chat'
 import { collectReasoning, reasoningCharCount, singleLinePreview } from './chat'
 import type { Translate } from './cordis'
 import { fallbackTranslate } from './locales'
 import { CARD_MARKER_CLASS } from './styles'
+import { sharedTranslator } from './translate'
 
 /** 折叠时最多展示的推理段数。 */
 const COLLAPSED_SEGMENTS = 2
@@ -109,22 +109,59 @@ function CardBody({ turn, t, useCotSteps }: CardBodyProps): ReactElement | null 
       'div',
       { className: 'cotx-body' },
       visible.map((segment, index) =>
-        createElement(
-          'div',
-          { className: 'cotx-segment', key: `${turnKey}:${index}` },
-          createElement(
-            'div',
-            { className: 'cotx-source', title: segment.text },
-            `${tr('card.original')} · ${singleLinePreview(segment.text, 60)}`,
-          ),
-          createElement(
-            'div',
-            { className: 'cotx-placeholder' },
-            tr('card.placeholder', { index: index + 1 }),
-          ),
-        ),
+        createElement(TranslatedSegment, {
+          key: `${turnKey}:${index}`,
+          text: segment.text,
+          t: tr,
+        }),
       ),
     ),
     createElement('div', { className: 'cotx-note' }, tr('card.note')),
+  )
+}
+
+/** 单段思考：原文起手 + 译文（或翻译中 / 失败提示）。 */
+function TranslatedSegment({ text, t }: { text: string; t: Translate }): ReactElement {
+  const [state, setState] = useState<{ phase: 'loading' | 'done' | 'failed'; text: string }>({
+    phase: 'loading',
+    text: '',
+  })
+
+  useEffect(() => {
+    let alive = true
+    sharedTranslator()
+      .translate(text)
+      .then((outcome) => {
+        if (!alive) return
+        setState(
+          outcome.ok ? { phase: 'done', text: outcome.text } : { phase: 'failed', text: '' },
+        )
+      })
+      .catch(() => {
+        if (alive) setState({ phase: 'failed', text: '' })
+      })
+    return () => {
+      alive = false
+    }
+  }, [text])
+
+  const body =
+    state.phase === 'done'
+      ? state.text
+      : t(state.phase === 'loading' ? 'card.loading' : 'card.failed')
+
+  return createElement(
+    'div',
+    { className: 'cotx-segment' },
+    createElement(
+      'div',
+      { className: 'cotx-source', title: text },
+      `${t('card.original')} · ${singleLinePreview(text, 60)}`,
+    ),
+    createElement(
+      'div',
+      { className: 'cotx-translation', 'data-cot-phase': state.phase },
+      body,
+    ),
   )
 }

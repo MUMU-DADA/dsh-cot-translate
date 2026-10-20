@@ -18,7 +18,6 @@ import { TurnTranslationCard } from './card'
 import type { ClientContext, SnapshotSource } from './cordis'
 import { LOCALES } from './locales'
 import { installStyles } from './styles'
-
 /** 包名，同时作为槽位条目 id 与 locale 命名空间。 */
 export const name = 'dsh-cot-translate'
 
@@ -91,3 +90,16 @@ export function apply(ctx: ClientContext): void {
     `${name}: turn-tail card`,
   )
 }
+
+// ── 供测试直接引用的纯逻辑（对宿主 Loader 无副作用）─────────────────────
+export { collectReasoning, reasoningCharCount, singleLinePreview } from './chat'
+export {
+  MAX_CHUNK_CHARS,
+  MAX_CHARS_PER_REQUEST,
+  MAX_CHUNKS_PER_REQUEST,
+  batchChunks,
+  keepRanges,
+  sentenceChunks,
+  splitForTranslation,
+} from './strip'
+export { TRANSLATE_ENDPOINT, TextTranslator, sharedTranslator } from './translate'
