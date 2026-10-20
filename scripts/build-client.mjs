@@ -11,7 +11,7 @@
 import { build } from 'esbuild'
 import { readFile } from 'node:fs/promises'
 
-const { name: ID } = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'))
+const { name: ID, version: VERSION } = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'))
 
 const BANNER = `window.__ModuleLoader__.load({
 \tid: "${ID}",
@@ -37,6 +37,7 @@ await build({
   minify: true,
   external: ['react', 'react/jsx-runtime', 'react-dom', 'react-dom/client'],
   outfile: 'lib/client.js',
+  define: { __COTX_VERSION__: JSON.stringify(VERSION) },
   banner: { js: BANNER },
   footer: { js: FOOTER },
 })

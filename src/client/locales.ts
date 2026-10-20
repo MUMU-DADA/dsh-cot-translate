@@ -56,6 +56,9 @@ const zh: NamespaceDictionary = {
   'set.selftestResult': '平均 {ms} ms/段 · {api}',
   'set.selftestFailed': '测试失败',
   'set.chain': '当前翻译来源',
+  'set.copyright': '© 2026 dsh-cot-translate contributors',
+  'set.version': 'v{version} · MIT License',
+  'set.versionUnknown': 'MIT License',
 
   // ── 设置页：翻译缓存 ──────────────────────────────────────
   'set.port': '本地服务端口',
@@ -125,6 +128,9 @@ const en: NamespaceDictionary = {
   'set.selftestResult': '{ms} ms/segment average · {api}',
   'set.selftestFailed': 'Test failed',
   'set.chain': 'Current providers',
+  'set.copyright': '© 2026 dsh-cot-translate contributors',
+  'set.version': 'v{version} · MIT License',
+  'set.versionUnknown': 'MIT License',
 
   // ── settings: translation cache ───────────────────────────
   'set.port': 'Local service port',

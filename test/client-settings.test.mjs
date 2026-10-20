@@ -1,6 +1,6 @@
 /**
  * 设置页渲染冒烟（jsdom + React）：确认 `SettingsSection` 能挂载、读到 `/_cotx/state`
- * 并渲染开关与模型行。真实数据来自 host，这里用假 fetch。
+ * 并渲染开关、模型、端口、缓存以及底部的版权信息。真实数据来自 host，这里用假 fetch。
  */
 
 import assert from 'node:assert/strict'
@@ -63,7 +63,7 @@ const STATE = {
   localPort: 28457,
 }
 
-test('设置页：挂载后渲染开关、时机与模型列表', async () => {
+test('设置页：挂载后渲染开关、时机、模型、端口、缓存与版权信息', async () => {
   const dom = new JSDOM('<!doctype html><html><body><div id="root"></div></body></html>', {
     pretendToBeVisual: true,
   })
@@ -74,6 +74,7 @@ test('设置页：挂载后渲染开关、时机与模型列表', async () => {
   }
   globalThis.window = dom.window
   globalThis.document = dom.window.document
+
   const fetchStub = async (url) => {
     if (String(url).includes('/_cotx/port')) {
       return { ok: true, status: 200, json: async () => ({ port: 28457, free: true, ours: false }) }
@@ -82,6 +83,7 @@ test('设置页：挂载后渲染开关、时机与模型列表', async () => {
   }
   globalThis.fetch = fetchStub
   dom.window.fetch = fetchStub
+  let root
 
   try {
     // jsdom 的 AbortSignal 未必实现静态 timeout；apiGet 会用到它。
@@ -103,12 +105,18 @@ test('设置页：挂载后渲染开关、时机与模型列表', async () => {
     const React = REQUIRE('react')
     const { createRoot } = REQUIRE('react-dom/client')
     const container = dom.window.document.getElementById('root')
-    const root = createRoot(container)
+    root = createRoot(container)
     root.render(React.createElement(client.SettingsSection, { t: client.fallbackTranslate }))
 
-    for (let attempt = 0; attempt < 40; attempt += 1) {
+    for (let attempt = 0; attempt < 80; attempt += 1) {
       await new Promise((resolve) => setTimeout(resolve, 0))
-      if (container.textContent.includes('set.modeSemi')) break
+      // 等异步的端口探测也回填（状态行出现）
+      if (
+        container.textContent.includes('本地服务端口') &&
+        container.textContent.includes('端口空闲')
+      ) {
+        break
+      }
     }
 
     const text = container.textContent
@@ -123,8 +131,15 @@ test('设置页：挂载后渲染开关、时机与模型列表', async () => {
     assert.ok(text.includes('译文语言'), '应有目标语言选择')
     assert.ok(text.includes('本地服务端口'), '应有服务端口设置')
     assert.ok(text.includes('端口空闲'), '应显示端口状态')
-    root.unmount()
+    assert.ok(text.includes('© 2026 dsh-cot-translate contributors'), '底部应有版权信息')
+    assert.ok(text.includes('MIT License'), '底部应显示许可证')
+    assert.ok(/v\d+\.\d+\.\d+/.test(text), '底部应显示版本号')
   } finally {
+    try {
+      root.unmount()
+    } catch {
+      // 卸载失败不影响断言结果
+    }
     globalThis.window = previous.window
     globalThis.document = previous.document
     globalThis.fetch = previous.fetch

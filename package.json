@@ -1,6 +1,6 @@
 {
   "name": "dsh-cot-translate",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "private": true,
   "description": "Display-layer translation of DSH reasoning (chain-of-thought) into Chinese, with a local-model-first provider chain.",
   "type": "module",

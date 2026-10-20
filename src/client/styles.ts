@@ -139,6 +139,22 @@ const CSS = `
   color: var(--dsw-alias-label-primary, inherit);
 }
 
+.cotx-set-footer {
+  margin-top: 8px;
+  padding-top: 12px;
+  border-top: 1px solid var(--dsw-alias-border-l2, rgba(127, 127, 127, 0.25));
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-tertiary, inherit);
+}
+
+.cotx-set-footer-sub {
+  opacity: 0.9;
+}
+
 .cotx-set-title {
   margin: 0;
   font-size: 16px;

@@ -85,6 +85,9 @@ interface SelfTestLike {
   error?: string
 }
 
+/** 构建时由 esbuild `define` 注入的插件版本号。 */
+declare const __COTX_VERSION__: string
+
 export interface SettingsSectionProps {
   /** 宿主的本地化函数（注册时声明了 locale 才有）。 */
   t?: Translate
@@ -593,6 +596,19 @@ export function SettingsSection(props: SettingsSectionProps): ReactElement {
     ),
   )
 
+  const footer = h(
+    'div',
+    { className: 'cotx-set-footer' },
+    h('div', null, tr('set.copyright')),
+    h(
+      'div',
+      { className: 'cotx-set-footer-sub' },
+      typeof __COTX_VERSION__ === 'string'
+        ? tr('set.version', { version: __COTX_VERSION__ })
+        : tr('set.versionUnknown'),
+    ),
+  )
+
   return h(
     'div',
     { className: 'cotx-set' },
@@ -647,5 +663,6 @@ export function SettingsSection(props: SettingsSectionProps): ReactElement {
     portRow,
     testRow,
     h('p', { className: 'cotx-set-hint' }, `${tr('set.chain')}: ${state.chain.join(' → ')}`),
+    footer,
   )
 }

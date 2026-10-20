@@ -118,6 +118,7 @@ DSH 里打开「设置 → 思维链翻译」，可以：
 | 本地服务端口 | llama-server 监听端口（默认 **28457**，刻意避开常见端口），可改；页面显示端口状态（空闲/在用/被占用） |
 
 设置存在 `~/.dsh/cot-translate/settings.json`，改完立即生效（不等重启）。
+页面最下方显示版权信息：`© 2026 dsh-cot-translate contributors`、版本号与 MIT License。
 
 ## 本地模型（可选，但推荐）
 
