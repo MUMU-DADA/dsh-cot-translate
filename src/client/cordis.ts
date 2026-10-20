@@ -31,6 +31,10 @@ export interface SlotRegisterOptions {
   key?: string
   order?: number
   locale?: string
+  /** 列表槽位的显示文本（可为 thunk，随 locale 重算）。 */
+  label?: string | (() => string)
+  /** 注册时声明的子槽位（本插件未使用，占位以对齐宿主形状）。 */
+  children?: Record<string, unknown>
   /**
    * 会话作用域槽位的注入：宿主按 sessionId 调用一次，返回值合并进组件 props。
    * `hooks` 为可直接调用的快照钩子，`keyedHooks` 为「传入 key 才返回钩子」的工厂。

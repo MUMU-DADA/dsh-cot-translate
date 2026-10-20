@@ -101,6 +101,21 @@ dsh plugin --profile web remove dsh-cot-translate
 # 同样需要完整重启
 ```
 
+## 设置页
+
+DSH 里打开「设置 → 思维链翻译」，可以：
+
+| 项 | 说明 |
+|---|---|
+| 启用翻译 | 总开关；关掉后思考块恢复原文 |
+| 翻译时机 | **半自动**（点开思考才翻）/ **自动**（思考生成完就翻，折叠着也翻，展开即有译文） |
+| 本地翻译模型 | 插件自带的 **Hy-MT2 1.8B Q4_K_M**（兜底、不可删除）+ 预选模型（1.8B Q8_0、7B Q4_K_M，按需下载） |
+| 更新 / 删除 | 自带模型可更新不可删；下载的模型可删 |
+| 本地模型速度测试 | 用固定样本测当前翻译链，给出每段平均耗时 |
+| 使用当前对话的 API 模型翻译 | 走当前会话选中的模型（`ctx.llm`，不碰密钥），本地模型降级为兜底 |
+
+设置存在 `~/.dsh/cot-translate/settings.json`，改完立即生效（不等重启）。
+
 ## 本地模型（可选，但推荐）
 
 本地推理**不需要装 GUI 软件、不需要安装器**：用 llama.cpp 的免安装二进制 + 官方 GGUF。
@@ -115,8 +130,10 @@ curl -L -o "$env:USERPROFILE\models\Hy-MT2-1.8B-Q4_K_M.gguf" `
   "https://huggingface.co/tencent/Hy-MT2-1.8B-GGUF/resolve/main/Hy-MT2-1.8B-Q4_K_M.gguf"
 ```
 
-插件默认在这两个位置找：`~/tools/llama.cpp/llama-server.exe` 与 `~/models/*.gguf`
+插件默认用**自带**的模型（`<插件根>/models/Hy-MT2-1.8B-Q4_K_M.gguf`，随插件目录分发、
+不随 npm 包发布，见 ADR-018），运行时在 `~/tools/llama.cpp/llama-server.exe`
 （也支持 `llamacpp.bin` / `llamacpp.modelPath` 覆盖）。
+其它预选模型在设置页里点「下载」即可（存到 `~/.dsh/cot-translate/models/`）。
 
 **不用手动启动服务**：插件发现服务没跑，就会自动拉起 `llama-server`
 （detached、无窗口、`--no-webui` 关掉它自带的网页界面），加载完直接翻译；

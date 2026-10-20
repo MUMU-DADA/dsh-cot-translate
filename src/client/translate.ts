@@ -60,16 +60,25 @@ export class TextTranslator {
   private readonly endpoint: string
   private readonly timeoutMs: number
   private readonly fetchImpl: FetchLike | undefined
+  /** 当前会话 id（「用对话模型翻译」档要用；host 拿它查会话模型）。 */
+  private sessionId: string | undefined
+
+  /** 清空译文缓存（设置变化/换模型时调用）。 */
+  clear(): void {
+    this.cache.clear()
+  }
+
+  /** 设置当前会话；变化时清空缓存（不同会话的模型可能不同）。 */
+  setSessionId(sessionId: string | undefined): void {
+    if (this.sessionId === sessionId) return
+    this.sessionId = sessionId
+    this.cache.clear()
+  }
 
   constructor(options: TextTranslatorOptions = {}) {
     this.endpoint = options.endpoint ?? TRANSLATE_ENDPOINT
     this.timeoutMs = options.timeoutMs ?? REQUEST_TIMEOUT_MS
     this.fetchImpl = options.fetchImpl
-  }
-
-  /** 清空 client 缓存（设置变更时用）。 */
-  clear(): void {
-    this.cache.clear()
   }
 
   /** 翻译一段文本；没有可翻内容时原样返回且 ok=true。 */
@@ -173,7 +182,9 @@ export class TextTranslator {
     const response = await fetchImpl(this.endpoint, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ segments }),
+      body: JSON.stringify(
+        this.sessionId === undefined ? { segments } : { segments, sessionId: this.sessionId },
+      ),
       signal: AbortSignal.timeout(this.timeoutMs),
     })
     if (!response.ok) throw new Error(`translate: HTTP ${response.status}`)

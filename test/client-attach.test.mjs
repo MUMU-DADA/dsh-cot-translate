@@ -343,3 +343,62 @@ test('轻量去 Markdown：去掉粗体/标题/列表符号', () => {
   assert.equal(client.normalizeMarkdownLite('- **bold** item'), '• bold item')
   assert.equal(client.normalizeMarkdownLite('plain ~~gone~~ text'), 'plain gone text')
 })
+
+test('自动模式：折叠的思考块也提前翻译（展开即有译文）', async (context) => {
+  client.setPrefs({ mode: 'auto', enabled: true })
+  document.body.innerHTML = `
+    <div data-conversation-session="session-auto">
+      <div data-chat-node-key="node-auto">
+        <div data-variant="think" data-state="ok">
+          <div class="lcKema_row">Think</div>
+        </div>
+      </div>
+    </div>
+  `
+  const calls = []
+  const translator = {
+    calls,
+    async translateMany(texts) {
+      calls.push([...texts])
+      return texts.map((text) => ({ ok: true, text: `译:${text}`, provider: 'ollama' }))
+    },
+  }
+  const handle = client.attachBilingual({
+    document,
+    translator,
+    lookup: () => 'First para.\n\nSecond para.',
+    throttleMs: 0,
+  })
+  context.after(() => {
+    handle.dispose()
+    client.setPrefs({ mode: 'semi' })
+  })
+  handle.scan()
+  await flush()
+
+  assert.equal(calls.length > 0, true, '自动模式应提前翻译')
+  assert.deepEqual(calls[0], ['First para.', 'Second para.'], '按面板同样的段落切分预热缓存')
+  assert.equal(document.querySelector('[data-cot-panel]'), null, '折叠态不注入面板')
+})
+
+test('关闭翻译：不注入面板，也不发请求', async (context) => {
+  client.setPrefs({ enabled: false })
+  const fixture = chatFixture({ text: 'Only paragraph.' })
+  const translator = fakeTranslator()
+  const handle = client.attachBilingual({
+    document,
+    translator,
+    lookup: () => undefined,
+    throttleMs: 0,
+  })
+  context.after(() => {
+    handle.dispose()
+    client.setPrefs({ enabled: true })
+  })
+  handle.scan()
+  await flush()
+
+  assert.equal(fixture.body.querySelector('[data-cot-panel]'), null, '关闭时不应注入面板')
+  assert.equal(fixture.body.getAttribute('data-cot-bilingual'), null, '关闭时不应打标记')
+  assert.equal(translator.calls.length, 0, '关闭时不应发翻译请求')
+})

@@ -7,6 +7,9 @@
  */
 
 import assert from 'node:assert/strict'
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import test from 'node:test'
 
 const host = await import('../lib/index.js')
@@ -437,10 +440,16 @@ test('registerRoutes：POST 翻译成功 / 坏请求 400 / 方法 405 / trust fe
   const fetchImpl = fakeFetch(() => jsonResponse(OLLAMA_OK))
   const config = host.normalizeConfig({ chain: ['ollama', 'google'], llamacpp: { enabled: false, autostart: false }, ollama: { enabled: true, model: 'kaelri/hy-mt2:7b-q4_K_M', autostart: false } })
   const translator = new host.Translator({ config, fetchImpl })
+  const facade = {
+    translate: (segments, target, sessionId) =>
+      translator.translate(segments, target ?? config.target, sessionId === undefined ? undefined : { sessionId }),
+    providerStates: () => translator.providerStates(),
+    modelsList: () => translator.models(),
+  }
   let guardReject = false
   host.registerRoutes({
     register,
-    translator,
+    facade,
     config,
     guard: (_req, res) => {
       if (!guardReject) return false
@@ -525,3 +534,122 @@ test('apply 的 guard 走 connection.requestRejection', async () => {
   await providers.handler(fakeRequest('GET'), res)
   assert.equal(res.statusCode, 403)
 })
+
+// ── 设置 / 模型 / 控制层（M4）────────────────────────────────────
+
+/** 在临时目录里跑（设置与下载都写这里，不碰真实 ~/.dsh）。 */
+function withTempHome(fn) {
+  return async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'cotx-home-'))
+    process.env.COTX_HOME = dir
+    try {
+      await fn(dir)
+    } finally {
+      delete process.env.COTX_HOME
+      rmSync(dir, { recursive: true, force: true })
+    }
+  }
+}
+
+test('设置：归一化坏值回退默认，补丁落盘可读回', withTempHome(async () => {
+  assert.deepEqual(host.normalizeSettings({}), host.DEFAULT_SETTINGS)
+  assert.equal(host.normalizeSettings({ mode: 'auto', enabled: false }).mode, 'auto')
+  assert.equal(host.normalizeSettings({ mode: 'nope' }).mode, 'semi')
+  assert.equal(host.normalizeSettings({ modelId: '   ' }).modelId, host.DEFAULT_SETTINGS.modelId)
+  assert.equal(host.normalizeSettings({ target: 42 }).target, host.DEFAULT_SETTINGS.target)
+
+  const saved = host.patchSettings({ mode: 'auto' })
+  assert.equal(saved.mode, 'auto')
+  assert.deepEqual(host.loadSettings(), saved)
+
+  const again = host.patchSettings({ modelId: 'hy-mt2-7b-q4', useSessionModel: true })
+  assert.equal(again.mode, 'auto', '补丁不能丢掉已有字段')
+  assert.equal(again.modelId, 'hy-mt2-7b-q4')
+  assert.equal(again.useSessionModel, true)
+}))
+
+test('模型目录：下载 → 已安装 → 可删除；自带模型不可删', withTempHome(async () => {
+  const preset = host.MODEL_CATALOG.find((model) => model.id === 'hy-mt2-1.8b-q8')
+  assert.ok(preset !== undefined)
+
+  const fetched = []
+  const fetchImpl = async (url) => {
+    fetched.push(String(url))
+    return new Response(Buffer.from('GGUF-FAKE'))
+  }
+  await host.downloadModel('hy-mt2-1.8b-q8', fetchImpl)
+  assert.deepEqual(fetched, [preset.url])
+
+  const status = host.listModels().find((model) => model.id === 'hy-mt2-1.8b-q8')
+  assert.equal(status.installed, true)
+  assert.equal(status.bytes, 9)
+  assert.equal(host.resolveModelPath('hy-mt2-1.8b-q8'), join(host.managedDir(), preset.file))
+  assert.deepEqual(host.downloadStateOf('hy-mt2-1.8b-q8').phase, 'done')
+
+  assert.equal(host.deleteModel('hy-mt2-1.8b-q4'), false, '自带兜底模型不可删除')
+  assert.equal(host.deleteModel('hy-mt2-1.8b-q8'), true)
+  assert.equal(host.listModels().find((model) => model.id === 'hy-mt2-1.8b-q8').installed, false)
+}))
+
+test('Control：设置即时生效（关翻译 / 用会话模型 / 静态 chain 不被覆盖）', withTempHome(async () => {
+  const fetchImpl = fakeFetch(() => jsonResponse(OLLAMA_OK))
+  const staticConfig = {
+    chain: ['ollama'],
+    google: { enabled: false },
+    ollama: { enabled: true, model: 'x/y:1b', autostart: false },
+  }
+  const control = new host.Control({ staticConfig, fetchImpl })
+
+  const initial = control.state()
+  assert.equal(initial.settings.mode, 'semi')
+  assert.deepEqual(initial.chain, ['ollama'])
+  assert.equal(initial.enabled, true)
+
+  const result = await control.translate(['hello'])
+  assert.deepEqual(result.translations, ['中文译文'])
+  assert.equal(result.provider, 'ollama')
+
+  const off = control.update({ enabled: false })
+  assert.equal(off.enabled, false)
+  assert.deepEqual((await control.translate(['hello'])).translations, [''])
+
+  const on = control.update({ enabled: true })
+  assert.equal(on.enabled, true)
+
+  // 打开「用对话模型翻译」：session 档插到链首
+  const sessionControl = new host.Control({
+    staticConfig,
+    fetchImpl,
+    sessionModel: {
+      resolveRoute: (sessionId) => (sessionId === undefined ? undefined : { provider: 'p', model: 'm' }),
+      call: async (request) => `会话译文:${request.user}`,
+    },
+  })
+  sessionControl.update({ useSessionModel: true })
+  assert.deepEqual(sessionControl.state().chain, ['session', 'ollama'])
+  const viaSession = await sessionControl.translate(['hello'], undefined, 'session-1')
+  assert.deepEqual(viaSession.translations, ['会话译文:hello'])
+  assert.equal(viaSession.provider, 'session')
+
+  // 没有会话 id 时 session 档拿不到路由 → 降级到 ollama（换一段文本避开缓存）
+  const fallback = await sessionControl.translate(['fallback text'])
+  assert.equal(fallback.provider, 'ollama')
+}))
+
+test('Control：速度自测返回耗时与 provider', withTempHome(async () => {
+  const fetchImpl = fakeFetch(() => jsonResponse(OLLAMA_OK))
+  const control = new host.Control({
+    staticConfig: {
+      chain: ['ollama'],
+      google: { enabled: false },
+      ollama: { enabled: true, model: 'x/y:1b', autostart: false },
+    },
+    fetchImpl,
+  })
+  const result = await control.selftest()
+  assert.equal(result.ok, true)
+  assert.equal(result.provider, 'ollama')
+  assert.equal(result.segments, 3)
+  assert.ok(result.ms >= 0)
+  assert.ok(result.perSegmentMs >= 0)
+}))

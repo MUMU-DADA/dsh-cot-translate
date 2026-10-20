@@ -217,3 +217,21 @@ Ollama 现成标签（已核实）：
 
 **换更大模型**：`tencent/Hy-MT2-7B-GGUF` 的 Q4_K_M 约 4.5GB，放 `~/models` 即可，
 插件按文件名偏好（hy-mt2 → Q4_K_M）自动选，不用改代码。
+## 10. 设置页与「用对话模型翻译」的宿主事实（2026-10-20 实测）
+
+| 事实 | 取值/结论 |
+|---|---|
+| 设置页槽位 | `settings.section`（**list**，root 作用域）；注册项 `{ name, id, order, label: () => t(...), locale }` |
+| 设置页组件 props | 宿主给 `close()`；注册时 `inject: () => ({...})` 的返回值合并进 props（客户端本地化用 `locale` + `ctx.locale.bind(ns)`） |
+| 设置页入口 | `settings.section` 由 `client-ui-settings-general` 的 `sidebar.settings` 条目声明；插件用 `ctx.slots.inject('settings.section', ...)` 注册 |
+| 宿主 LLM 入口 | `ctx.llm.stream({ provider, model, messages, system, maxTokens, sessionId?, purpose?, signal })`，逐块产出 `text-delta`（`chunk.text`）与 `finish`（`chunk.reason.kind`） |
+| 消息构造 | `@deepseek-ai/dsh-llm` 的 `createUserMessage({ content: [{type:'text', text}], source })`；宿主包在运行时解析，插件里用**变量**做动态 import，构建期不绑死 |
+| 会话当前模型 | `sessions` 服务的 `get(sessionId)` → `session.requestHeader()?.config` 里有上一次请求的 `{ provider, model }`（会话不存在/未请求过时为 undefined） |
+| 服务访问 | cordis 服务同时可通过 `ctx.<name>` 或 `ctx.get('<name>')` 拿到（本插件两个入口都试） |
+| 插件数据目录 | `~/.dsh/cot-translate/`（`COTX_HOME` 可覆盖，测试用） |
+
+**踩坑**
+
+- `llama-server` 默认端口 9931、默认开 Web UI，自启必须显式 `--port` + `--no-webui`。
+- 停本地服务只能停**本进程 spawn 的** pid；用户手动起的实例不跟踪（重启/换模型后靠探活复用）。
+- 设置页里 React 由 shell 的 PLATFORM_MODULES 提供，bundle 必须 external `react` / `react/jsx-runtime`。

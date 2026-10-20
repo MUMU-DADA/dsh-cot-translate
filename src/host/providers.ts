@@ -34,6 +34,11 @@ export interface ProviderProbe {
   detail?: string
 }
 
+/** 一次翻译请求的附加上下文（例如当前会话 id，供“用对话模型翻译”档使用）。 */
+export interface TranslateContext {
+  sessionId?: string
+}
+
 export interface TranslateProvider {
   id: string
   kind: ProviderKind
@@ -49,6 +54,7 @@ export interface TranslateProvider {
     target: string,
     signal: AbortSignal,
     fetchImpl: FetchLike,
+    context?: TranslateContext,
   ): Promise<string[]>
   probe(signal: AbortSignal, fetchImpl: FetchLike): Promise<ProviderProbe>
   listModels?(signal: AbortSignal, fetchImpl: FetchLike): Promise<string[]>
@@ -168,7 +174,7 @@ function numPredictFor(text: string): number {
 const MAX_PARALLEL_SEGMENTS = 2
 
 /** 并发执行且保留结果顺序（任何一段失败整体抛错，由链降级）。 */
-async function mapConcurrent<T, R>(
+export async function mapConcurrent<T, R>(
   items: readonly T[],
   limit: number,
   run: (item: T, index: number) => Promise<R>,

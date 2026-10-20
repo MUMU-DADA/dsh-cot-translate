@@ -20,8 +20,8 @@ export type FetchLike = (input: string, init?: RequestInit) => Promise<Response>
 
 /** 自启行为的可注入依赖（测试用）。 */
 export interface RuntimeDeps {
-  /** 实际拉起进程（默认 detached spawn）。 */
-  launch?: (bin: string, args: string[]) => void
+  /** 实际拉起进程（默认 detached spawn）；返回 pid 便于之后停掉。 */
+  launch?: (bin: string, args: string[]) => void | number
   /** 等待函数（测试里换成零等待）。 */
   sleep?: (ms: number) => Promise<void>
   /** 等待服务就绪的总时长（默认 30 秒：第一次要加载模型到显存）。 */
@@ -42,12 +42,33 @@ const readyServers = new Set<string>()
 const inflight = new Map<string, Promise<EnsureResult>>()
 
 /** 默认拉起方式：完全脱离父进程，不继承 stdio —— 无窗口、无 GUI。 */
-function defaultLaunch(bin: string, args: string[]): void {
+function defaultLaunch(bin: string, args: string[]): number | undefined {
   const child = spawn(bin, args, { detached: true, stdio: 'ignore', windowsHide: true })
   child.on('error', () => {
     // 找不到可执行文件/无权限：交给就绪探测失败，不抛给调用方。
   })
   child.unref()
+  return child.pid
+}
+
+/** 我们自己拉起的进程 pid（按 baseURL），用于切换模型时停掉旧的。 */
+const spawnedPids = new Map<string, number>()
+
+/**
+ * 停掉本插件拉起的本地服务（切换模型/关闭功能时用）。
+ * 只杀自己 spawn 的进程，不动用户手动起的实例。
+ */
+export function stopLocalServer(baseURL: string): void {
+  const pid = spawnedPids.get(baseURL)
+  spawnedPids.delete(baseURL)
+  readyServers.delete(`${baseURL}|/health`)
+  readyServers.delete(`${baseURL}|/api/tags`)
+  if (pid === undefined) return
+  try {
+    process.kill(pid)
+  } catch {
+    // 进程已经退出/无权限：忽略
+  }
 }
 
 export interface EnsureResult {
@@ -111,7 +132,8 @@ async function runEnsure(options: EnsureLocalServerOptions): Promise<EnsureResul
   if (plan === undefined) return { started: false, ready: false }
 
   try {
-    ;(deps.launch ?? defaultLaunch)(plan.bin, plan.args)
+    const pid = (deps.launch ?? defaultLaunch)(plan.bin, plan.args)
+    if (typeof pid === 'number') spawnedPids.set(baseURL, pid)
   } catch {
     return { started: false, ready: false }
   }

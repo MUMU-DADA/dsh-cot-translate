@@ -8,3 +8,8 @@ coverage/
 .env.*
 .DS_Store
 Thumbs.db
+
+# 模型文件不进版本库（体积大；插件运行时从本目录加载）
+models/*.gguf
+models/*.part
+

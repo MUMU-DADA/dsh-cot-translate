@@ -12,7 +12,7 @@
 import type { ProviderState, TranslateResponse } from '../shared'
 import { LruCache, NegativeCache, cacheKey } from './cache'
 import type { CotConfig } from './config'
-import type { FetchLike, TranslateProvider } from './providers'
+import type { FetchLike, TranslateContext, TranslateProvider } from './providers'
 import { createGoogleProvider, createLlamaCppProvider, createOllamaProvider } from './providers'
 import type { RuntimeDeps } from './runtime'
 
@@ -29,6 +29,8 @@ export interface TranslatorDeps {
   now?: () => number
   /** 本地服务自启的可注入依赖（测试用）。 */
   localRuntime?: RuntimeDeps
+  /** 额外 provider（如「当前对话的 API 模型」），按 id 参与链。 */
+  extraProviders?: TranslateProvider[]
 }
 
 /** 单个 provider 一次请求的超时信号（Node 18+ 自带 AbortSignal.timeout）。 */
@@ -44,14 +46,21 @@ export class Translator {
   private readonly fetchImpl: FetchLike | undefined
   private readonly log: ((message: string) => void) | undefined
   private readonly localRuntime: RuntimeDeps | undefined
+  private readonly extraProviders: TranslateProvider[]
 
   constructor(deps: TranslatorDeps) {
     this.config = deps.config
     this.fetchImpl = deps.fetchImpl
     this.log = deps.log
     this.localRuntime = deps.localRuntime
+    this.extraProviders = deps.extraProviders ?? []
     this.cache = new LruCache<string>(deps.config.cacheSize)
     this.negative = new NegativeCache(deps.config.negativeTtlMs, 200, deps.now)
+  }
+
+  /** 当前生效配置的快照（只读）。 */
+  configSnapshot(): CotConfig {
+    return this.config
   }
 
   /** 当前生效的 provider 列表（按 chain 顺序，跳过被禁用的）。 */
@@ -61,6 +70,7 @@ export class Translator {
       ollama: createOllamaProvider(this.config.ollama, this.localRuntime),
       google: createGoogleProvider(this.config.google),
     }
+    for (const provider of this.extraProviders) all[provider.id] = provider
     const selected: TranslateProvider[] = []
     for (const id of this.config.chain) {
       if (id === 'llamacpp' && !this.config.llamacpp.enabled) continue
@@ -76,8 +86,13 @@ export class Translator {
    * 翻译一批自然语言片段。
    * @param segments - 已剔除代码/路径/URL 的片段（client 半负责剔除）。
    * @param target - 目标语言；省略则用配置值。
+   * @param context - 附加上下文（如当前会话 id，供“用对话模型翻译”档使用）。
    */
-  async translate(segments: readonly string[], target = this.config.target): Promise<TranslateResponse> {
+  async translate(
+    segments: readonly string[],
+    target = this.config.target,
+    context?: TranslateContext,
+  ): Promise<TranslateResponse> {
     if (!this.config.enabled || segments.length === 0) {
       return { translations: segments.map(() => ''), provider: '' }
     }
@@ -114,6 +129,7 @@ export class Translator {
           target,
           timeoutSignal(this.config.timeoutMs),
           fetchImpl,
+          context,
         )
         if (translated.length !== misses.length) {
           throw new Error(`${provider.id}: length mismatch`)

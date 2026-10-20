@@ -37,7 +37,15 @@
 - **路由**（exact，同源）
   - `POST /_cotx/translate` `{ target?, segments }` → `{ translations, provider }`
   - `GET /_cotx/providers` → 当前链与各自可用性（不含密钥、不含原文）
-  - `GET /_cotx/models` → 本地模型列表（llama.cpp `/v1/models` 或 Ollama `/api/tags`）
+  - `GET /_cotx/models` → 本地运行时里已有的模型名（llama.cpp `/v1/models` 或 Ollama `/api/tags`）
+- `GET /_cotx/state` → 设置 + 模型目录状态 + 下载进度（设置页用）
+- `POST /_cotx/settings` → 改设置，立即重建翻译链（改模型会停掉旧的 llama-server）
+- `POST /_cotx/models/download | /models/delete` → 下载/更新/删除模型（自带模型不可删）
+- `POST /_cotx/selftest` → 固定样本速度自测；`POST /_cotx/restart` → 重启本地服务
+- 编排层：`control.ts`（设置、模型、自测），HTTP 只做校验与调度
+
+设置持久化：`~/.dsh/cot-translate/settings.json`（`COTX_HOME` 可覆盖）；
+模型：自带在 `<插件根>/models/`（gitignore），下载的在 `~/.dsh/cot-translate/models/`。
 - **请求边界**：`connection.requestRejection` 做 trust fence；body ≤ 64KB；段数 1..64；
   单段 ≤ 4000 字符；单批 ≤ 16000 字符；空段/非字符串/坏 JSON 一律 400。
 - **provider 统一接口**（`src/host/providers.ts`）

@@ -35,7 +35,9 @@
         "@deepseek-ai/dsh-api-session-controller",
         "@deepseek-ai/dsh-client-locale",
         "@deepseek-ai/dsh-client-ui-conversation",
-        "@deepseek-ai/dsh-client-ui-chat"
+        "@deepseek-ai/dsh-client-ui-chat",
+        "@deepseek-ai/dsh-client-ui-settings",
+        "@deepseek-ai/dsh-client-ui-settings-general"
       ]
     }
   },
@@ -60,7 +62,7 @@
     "reasoning",
     "translation",
     "local-llm",
-    "ollama"
+    "llama.cpp"
   ],
   "peerDependencies": {
     "@deepseek-ai/cordis": "~4.0.4",

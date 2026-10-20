@@ -1,23 +1,30 @@
 /**
- * HTTP 路由（host 半）：`/_cotx/translate`、`/_cotx/providers`、`/_cotx/models`。
+ * HTTP 路由（host 半）：翻译、provider 状态、模型管理、设置与自测。
  *
  * 边界（ADR-007）：
  * - 只接受同源/本机请求，由 `connection.requestRejection` 这道 trust fence 判定；
  * - 请求体有上限，字段逐个校验，坏输入一律 400，不把异常抛给 webserver；
  * - 响应不含原文、不含密钥；`cache-control: no-store`。
  *
- * 这里只管 HTTP，不碰 provider 细节 —— 编排在 chain.ts。
+ * 这里只管 HTTP，不碰 provider/设置细节 —— 编排在 control.ts、链在 chain.ts。
  */
 
 import type { IncomingMessage, ServerResponse } from 'node:http'
-import type { ErrorResponse, ModelsResponse, ProvidersResponse } from '../shared'
+import type { ProviderState, TranslateResponse } from '../shared'
 import type { Translator } from './chain'
+import type { Control } from './control'
 import type { CotConfig } from './config'
 
 /** 路由常量；client 半按同一路径请求。 */
 export const TRANSLATE_PATH = '/_cotx/translate'
 export const PROVIDERS_PATH = '/_cotx/providers'
 export const MODELS_PATH = '/_cotx/models'
+export const STATE_PATH = '/_cotx/state'
+export const SETTINGS_PATH = '/_cotx/settings'
+export const MODEL_DOWNLOAD_PATH = '/_cotx/models/download'
+export const MODEL_DELETE_PATH = '/_cotx/models/delete'
+export const SELFTEST_PATH = '/_cotx/selftest'
+export const RESTART_PATH = '/_cotx/restart'
 
 /** 思考片段是自然语言，64KB 已远超正常批量；超过即视为异常输入。 */
 const MAX_BODY_BYTES = 64 * 1024
@@ -38,11 +45,20 @@ export type RouteRegister = (route: {
 export interface TranslateBody {
   target?: string
   segments: string[]
+  /** 当前会话 id（「用对话模型翻译」档要用）。 */
+  sessionId?: string
 }
 
 export type ParseResult =
   | { ok: true; value: TranslateBody }
   | { ok: false; message: string }
+
+/** 翻译能力的门面：路由只依赖它，测试可注入假实现。 */
+export interface TranslationFacade {
+  translate(segments: readonly string[], target?: string, sessionId?: string): Promise<TranslateResponse>
+  providerStates(): Promise<ProviderState[]>
+  modelsList(): Promise<string[]>
+}
 
 /** JSON 响应；不缓存（可用性与译文都是实时事实）。 */
 export function sendJson(res: ServerResponse, status: number, payload: unknown): void {
@@ -76,6 +92,21 @@ export async function readBoundedBody(req: IncomingMessage): Promise<string | nu
   return Buffer.concat(chunks, size).toString('utf8')
 }
 
+/** 解析 JSON 请求体；空体返回 {}。 */
+export async function readJsonBody(req: IncomingMessage): Promise<Record<string, unknown> | null> {
+  const text = await readBoundedBody(req)
+  if (text === null) return null
+  if (text.trim() === '') return {}
+  try {
+    const parsed: unknown = JSON.parse(text)
+    return typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)
+      ? (parsed as Record<string, unknown>)
+      : null
+  } catch {
+    return null
+  }
+}
+
 /**
  * 校验 `POST /_cotx/translate` 的请求体。
  * 空段落直接拒绝：client 半负责跳过空段，不把空串送进来。
@@ -94,6 +125,10 @@ export function parseTranslateBody(text: string): ParseResult {
   const target = record.target
   if (target !== undefined && (typeof target !== 'string' || target.length > 32)) {
     return { ok: false, message: 'target must be a string of at most 32 chars' }
+  }
+  const sessionId = record.sessionId
+  if (sessionId !== undefined && (typeof sessionId !== 'string' || sessionId.length > 200)) {
+    return { ok: false, message: 'sessionId must be a string of at most 200 chars' }
   }
   const segments = record.segments
   if (!Array.isArray(segments)) {
@@ -121,29 +156,53 @@ export function parseTranslateBody(text: string): ParseResult {
   }
   return {
     ok: true,
-    value: typeof target === 'string' ? { target, segments: trimmed } : { segments: trimmed },
+    value: {
+      segments: trimmed,
+      ...(typeof target === 'string' ? { target } : {}),
+      ...(typeof sessionId === 'string' ? { sessionId } : {}),
+    },
   }
 }
 
 export interface RouteOptions {
   /** ctx.webServer.register。 */
   register: RouteRegister
-  translator: Translator
+  /** 翻译门面（生产是 Control，测试可注入）。 */
+  facade: TranslationFacade
   config: CotConfig
   /**
    * trust fence：返回 true 表示请求已被拒绝（响应已发出）。
    * 由 index.ts 接 `connection.requestRejection`。
    */
   guard: (req: IncomingMessage, res: ServerResponse) => boolean
+  /** 设置/模型管理接口；缺省时这些路由不注册（单测的最小装配）。 */
+  control?: Control
 }
 
 /**
- * 注册三条路由。
+ * 注册所有路由。
  * @returns 与注册顺序一致的 disposer 列表（调用方负责在卸载时全部执行）。
  */
 export function registerRoutes(options: RouteOptions): Array<() => void> {
-  const { register, translator, config, guard } = options
+  const { register, facade, config, guard, control } = options
   const disposers: Array<() => void> = []
+
+  const exact = (
+    path: string,
+    handler: (req: IncomingMessage, res: ServerResponse, body: Record<string, unknown>) => Promise<void>,
+  ) => {
+    disposers.push(
+      register({
+        kind: 'exact',
+        path,
+        handler: async (req, res) => {
+          if (guard(req, res)) return
+          const body = (await readJsonBody(req)) ?? {}
+          await handler(req, res, body)
+        },
+      }),
+    )
+  }
 
   disposers.push(
     register({
@@ -157,15 +216,19 @@ export function registerRoutes(options: RouteOptions): Array<() => void> {
         }
         const body = await readBoundedBody(req)
         if (body === null) {
-          sendJson(res, 413, { error: 'too-large' } satisfies ErrorResponse)
+          sendJson(res, 413, { error: 'too-large' })
           return
         }
         const parsed = parseTranslateBody(body)
         if (!parsed.ok) {
-          sendJson(res, 400, { error: 'bad-request', message: parsed.message } satisfies ErrorResponse)
+          sendJson(res, 400, { error: 'bad-request', message: parsed.message })
           return
         }
-        const result = await translator.translate(parsed.value.segments, parsed.value.target)
+        const result = await facade.translate(
+          parsed.value.segments,
+          parsed.value.target,
+          parsed.value.sessionId,
+        )
         sendJson(res, 200, result)
       },
     }),
@@ -181,13 +244,13 @@ export function registerRoutes(options: RouteOptions): Array<() => void> {
           sendMethodNotAllowed(res, 'GET')
           return
         }
-        const providers = await translator.providerStates()
+        const providers = await facade.providerStates()
         sendJson(res, 200, {
           enabled: config.enabled,
           target: config.target,
           chain: [...config.chain],
           providers,
-        } satisfies ProvidersResponse)
+        })
       },
     }),
   )
@@ -202,11 +265,67 @@ export function registerRoutes(options: RouteOptions): Array<() => void> {
           sendMethodNotAllowed(res, 'GET')
           return
         }
-        const models = await translator.models()
-        sendJson(res, 200, { models } satisfies ModelsResponse)
+        sendJson(res, 200, { models: await facade.modelsList() })
       },
     }),
   )
+
+  if (control === undefined) return disposers
+
+  // ── 设置 / 模型管理 / 自测 ──────────────────────────────────
+  exact(STATE_PATH, async (_req, res) => {
+    sendJson(res, 200, control.state())
+  })
+
+  exact(SETTINGS_PATH, async (req, res, body) => {
+    if (req.method !== 'POST') {
+      sendMethodNotAllowed(res, 'POST')
+      return
+    }
+    sendJson(res, 200, control.update(body))
+  })
+
+  exact(MODEL_DOWNLOAD_PATH, async (req, res, body) => {
+    if (req.method !== 'POST') {
+      sendMethodNotAllowed(res, 'POST')
+      return
+    }
+    const id = typeof body.id === 'string' ? body.id : ''
+    if (id === '') {
+      sendJson(res, 400, { error: 'bad-request', message: 'id is required' })
+      return
+    }
+    // 下载是长任务：立刻返回，进度靠 /_cotx/state 轮询。
+    void control.download(id).catch(() => {
+      // 失败状态已经记在 downloadStateOf 里
+    })
+    sendJson(res, 202, { started: id })
+  })
+
+  exact(MODEL_DELETE_PATH, async (req, res, body) => {
+    if (req.method !== 'POST') {
+      sendMethodNotAllowed(res, 'POST')
+      return
+    }
+    const id = typeof body.id === 'string' ? body.id : ''
+    sendJson(res, 200, control.remove(id))
+  })
+
+  exact(SELFTEST_PATH, async (req, res) => {
+    if (req.method !== 'POST') {
+      sendMethodNotAllowed(res, 'POST')
+      return
+    }
+    sendJson(res, 200, await control.selftest())
+  })
+
+  exact(RESTART_PATH, async (req, res) => {
+    if (req.method !== 'POST') {
+      sendMethodNotAllowed(res, 'POST')
+      return
+    }
+    sendJson(res, 200, control.restart())
+  })
 
   return disposers
 }

@@ -8,7 +8,7 @@
  */
 
 /** 已知的 provider id（链里出现别的 id 会被忽略）。 */
-export const PROVIDER_IDS = ['llamacpp', 'ollama', 'google'] as const
+export const PROVIDER_IDS = ['session', 'llamacpp', 'ollama', 'google'] as const
 
 /** provider id 联合。 */
 export type ProviderId = (typeof PROVIDER_IDS)[number]

@@ -11,6 +11,7 @@
 export type ProviderKind =
   | 'llamacpp'
   | 'ollama'
+  | 'session'
   | 'openai'
   | 'anthropic'
   | 'google'

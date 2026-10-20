@@ -303,6 +303,52 @@
 
 ---
 
+## ADR-018 设置页 + 自带兜底模型 + 自动/半自动两种翻译时机
+
+**背景**：用户要求把插件做成可配置的：翻译总开关、自动/半自动切换、本地模型选择与更新、
+速度自测、以及「用当前对话的 API 模型翻译」。并明确要求：插件要**自带**当前这个
+1.8B 翻译模型，作为**不可删除的兜底模型**；其它预选模型按需下载。
+
+**决策**
+
+- **设置页走 `settings.section` 槽位**（list）：注册一个 id 为 `cot-translate` 的页面，
+  在 DSH「设置」里多一栏。控件用原生 DOM + 插件自己的 CSS，不依赖 ui-primitives。
+- **设置存在插件自己的文件**（`~/.dsh/cot-translate/settings.json`），而不是 DSH 的
+  settings/schemastery：这样设置能立刻生效（改模型要重启本地服务），也不用把
+  schema 依赖拉进插件（延续 ADR-012）。`COTX_HOME` 环境变量可覆盖数据目录（测试用）。
+- **翻译时机**
+  - 半自动（默认）：只在用户展开思考块时翻（原来的行为）；
+  - 自动：思考生成完成后就翻，折叠着的也翻 —— 用数据层取原文、按面板同样的段落切分
+    预热客户端缓存，展开时直接命中缓存。
+- **模型来源**分两类：
+  - `bundled`：放在插件目录 `<插件根>/models/`，**不可删除**，作为兜底；
+  - `preset`：HF 官方 GGUF（1.8B Q8_0 / 7B Q4_K_M），下载到 `~/.dsh/cot-translate/models/`，
+    可下载/更新/删除。
+  - 换模型时停掉插件自己拉起的 llama-server，下次请求按新 `--model` 重新拉起。
+- **「用当前对话的 API 模型翻译」**：host 半用 `ctx.llm.stream()`（宿主统一模型入口，
+  不复制密钥、不自己发 HTTP）；provider/model 从 `sessions.get(sessionId).requestHeader()`
+  的上一次请求配置里读。client 半把 `[data-conversation-session]` 里的会话 id 带进
+  `/_cotx/translate` 请求。
+- **更新**：对 bundled 模型也允许「更新」（重新下载覆盖），但**不允许删除** —— 保证兜底永远在。
+
+**与 ADR-016 的关系（重要）**
+
+ADR-016 说「不把模型打包进插件」针对的是 **npm 包体积**（1.1GB 进版本库不可接受）。
+本次「插件自带」实现为：模型文件放在插件**目录**的 `models/` 下（本地部署形态），
+并在 `.gitignore` 里排除，**不进入 git / npm 产物**；`npm pack` 的 `files` 也不含它。
+这样既满足「自带、不可删除、离线可用」，又不污染版本库。发布到 npm 时需要通过
+安装脚本/文档下载到该目录（设置页会显示「未下载」并提供下载按钮）。
+
+**后果**
+
+- 新增路由：`GET /_cotx/state`、`POST /_cotx/settings`、`POST /_cotx/models/download`、
+  `POST /_cotx/models/delete`、`POST /_cotx/selftest`、`POST /_cotx/restart`。
+- 模型下载走 HF 直链（用户在墙内时速度取决于代理），进度通过 `/_cotx/state` 轮询；
+  下载先写 `.part` 再 rename，避免半截文件被当成可用模型。
+- 「用对话模型翻译」会产生 API 费用，设置页里明确标注。
+
+---
+
 ## 开放问题
 
 1. ~~**内联渲染是否可行**~~ → 已答：不可行（keyed + 替换语义），见 ADR-011；最终用 DOM 注入，见 ADR-014。

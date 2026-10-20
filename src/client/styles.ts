@@ -125,6 +125,191 @@ const CSS = `
     color: var(--dsw-alias-label-tertiary, inherit);
   }
 }
+
+/* ── 设置页（settings.section）──────────────────────────────── */
+
+.cotx-set {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  max-width: 680px;
+  padding: 4px 0 24px;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--dsw-alias-label-primary, inherit);
+}
+
+.cotx-set-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.cotx-set-intro {
+  margin: 0;
+  color: var(--dsw-alias-label-secondary, inherit);
+}
+
+.cotx-set-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px 12px;
+  border: 1px solid var(--dsw-alias-border-l2, rgba(127, 127, 127, 0.25));
+  border-radius: 10px;
+}
+
+.cotx-set-label {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.cotx-set-hint {
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-tertiary, inherit);
+}
+
+.cotx-set-switch input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--dsw-alias-brand-primary, #4d6bfe);
+  cursor: pointer;
+}
+
+.cotx-set-segmented {
+  display: inline-flex;
+  border: 1px solid var(--dsw-alias-border-l2, rgba(127, 127, 127, 0.25));
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.cotx-set-seg {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  cursor: pointer;
+  color: var(--dsw-alias-label-secondary, inherit);
+}
+
+.cotx-set-seg input {
+  display: none;
+}
+
+.cotx-set-seg.is-active {
+  background: var(--dsw-alias-brand-secondary, rgba(77, 107, 254, 0.12));
+  color: var(--dsw-alias-label-primary, inherit);
+  font-weight: 600;
+}
+
+.cotx-set-select {
+  min-width: 220px;
+  padding: 6px 8px;
+  border: 1px solid var(--dsw-alias-border-l2, rgba(127, 127, 127, 0.25));
+  border-radius: 8px;
+  background: var(--dsw-alias-bg-base, transparent);
+  color: inherit;
+  font-size: 13px;
+}
+
+.cotx-set-models {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.cotx-set-model {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--dsw-alias-border-l2, rgba(127, 127, 127, 0.25));
+  border-radius: 10px;
+}
+
+.cotx-set-model-main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.cotx-set-model-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+}
+
+.cotx-set-badge {
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--dsw-alias-brand-secondary, rgba(77, 107, 254, 0.12));
+  color: var(--dsw-alias-brand-primary, #4d6bfe);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 18px;
+}
+
+.cotx-set-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.cotx-set-btn {
+  padding: 5px 12px;
+  border: 1px solid var(--dsw-alias-border-l2, rgba(127, 127, 127, 0.25));
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.cotx-set-btn:hover:not(:disabled) {
+  background: var(--dsw-alias-bg-l2, rgba(127, 127, 127, 0.1));
+}
+
+.cotx-set-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.cotx-set-btn-danger {
+  color: var(--dsw-alias-state-error, #d93f3f);
+}
+
+.cotx-set-progress {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+  width: 100%;
+}
+
+.cotx-set-bar {
+  height: 6px;
+  min-width: 2px;
+  border-radius: 999px;
+  background: var(--dsw-alias-brand-primary, #4d6bfe);
+  transition: width 0.2s ease;
+}
+
+.cotx-set-ok {
+  font-size: 12px;
+  color: var(--dsw-alias-state-success, #2e9e5b);
+}
+
+.cotx-set-bad {
+  font-size: 12px;
+  color: var(--dsw-alias-state-error, #d93f3f);
+}
 `
 
 /**
