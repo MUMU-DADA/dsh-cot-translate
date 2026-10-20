@@ -249,3 +249,62 @@ test('设置页：切到英文后渲染英文文案（i18n）', async () => {
     dom.window.close()
   }
 })
+test('设置页：日文渲染（第 3 种语言端到端）', async () => {
+  const dom = new JSDOM('<!doctype html><html lang="ja"><body><div id="root"></div></body></html>', {
+    pretendToBeVisual: true,
+  })
+  const previous = { window: globalThis.window, document: globalThis.document, fetch: globalThis.fetch }
+  globalThis.window = dom.window
+  globalThis.document = dom.window.document
+  const fetchStub = async (url) => {
+    if (String(url).includes('/_cotx/port')) {
+      return { ok: true, status: 200, json: async () => ({ port: 28457, free: true, ours: false }) }
+    }
+    return { ok: true, status: 200, json: async () => STATE }
+  }
+  globalThis.fetch = fetchStub
+  dom.window.fetch = fetchStub
+  let root
+  try {
+    if (typeof dom.window.AbortSignal.timeout !== 'function') {
+      Object.defineProperty(dom.window.AbortSignal, 'timeout', {
+        value: () => new dom.window.AbortController().signal,
+        configurable: true,
+      })
+    }
+    let captured
+    dom.window.__ModuleLoader__ = { load(options) { captured = options } }
+    dom.window.eval(SOURCE)
+    const client = captured.factory(REQUIRE)
+    const ja = client.LOCALES.ja
+    const t = (key, params) => {
+      const template = ja[key] ?? key
+      if (params === undefined) return template
+      return template.replace(/\{(\w+)\}/g, (_match, name) =>
+        params[name] === undefined ? `{${name}}` : String(params[name]),
+      )
+    }
+    const React = REQUIRE('react')
+    const { createRoot } = REQUIRE('react-dom/client')
+    root = createRoot(dom.window.document.getElementById('root'))
+    root.render(React.createElement(client.SettingsSection, { t }))
+    const container = dom.window.document.getElementById('root')
+    for (let attempt = 0; attempt < 80; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 0))
+      if (container.textContent.includes('ローカルサービスポート')) break
+    }
+    const text = container.textContent
+    assert.ok(text.includes('思考プロセス（CoT）翻訳'), `日文标题: ${text.slice(0, 120)}`)
+    assert.ok(text.includes('ローカルサービスポート'), '日文端口设置')
+    assert.ok(text.includes('翻訳キャッシュ'), '日文缓存标题')
+    assert.ok(text.includes('同梱の標準モデル'), '日文模型说明（noteKey）')
+    assert.ok(text.includes('ローカル Hy-MT2（llama.cpp）'), '日文 provider 名')
+    assert.ok(text.includes('{limit}') === false, '插值位应已替换，不能残留 {limit}')
+  } finally {
+    try { root?.unmount() } catch {}
+    globalThis.window = previous.window
+    globalThis.document = previous.document
+    globalThis.fetch = previous.fetch
+    dom.window.close()
+  }
+})
