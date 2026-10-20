@@ -2,9 +2,9 @@
 
 在 DeepSeek Harness（DSH）Web 界面里，把模型的**思维链（reasoning / chain-of-thought）实时翻译成中文**的显示层插件，优先使用**本地模型**（Ollama / llama.cpp），全部失败时回退免费在线源。
 
-> 状态：**M2 / M3 核心可用** —— 已能取 reasoning 文本、剔除代码/路径/URL、分批送同源
-> `/_cotx/translate`，在回合底部卡片里显示中文译文；本地 Ollama 优先，免费 Google 兜底，
-> 全失败显示原文。尚未做：实时形态（进行中的回合）、设置页。详见 [docs/ROADMAP.md](docs/ROADMAP.md)。
+> 状态：**M1b / M2 / M3 可用（待真机验收）** —— 展开思考块时**就地**显示双语对照：
+> 左栏原文、右栏中文译文，逐段成行，鼠标移到某段左右两边一起高亮；代码 / 路径 / 链接保持原样。
+> 本地 Ollama 优先，免费 Google 兜底，全失败显示原文。尚未做：设置页。详见 [docs/ROADMAP.md](docs/ROADMAP.md)。
 > 目标运行时：DSH `0.2.0-rc.2` + cordis `4.0.4`（DSH Desktop 0.5.23 内置，实测读包版本）。
 
 ## 它要解决什么
@@ -16,6 +16,20 @@
 - 代码、路径、命令、URL、标识符**不翻译**；
 - 翻译来源可排序：本地模型优先，其次远程 OpenAI 兼容端点，最后免费 Google/Bing；
 - 全挂了就显示原文（fail-open）。
+
+## 长什么样
+
+展开某个 Think 行后，展开区里是**左原文 / 右译文**的逐段对照：
+
+| 原文 | 译文 |
+|---|---|
+| I should check the repo layout first. | 我应该先看看仓库结构。 |
+| Run `npm test` before touching the host half. | 先跑 `npm test` 再改 host 半。 |
+
+- 鼠标移到任意一行，**左右两边同时高亮**，方便逐句对读；
+- 代码、路径、URL、`fn()` 保持等宽原样，右栏对这些段落直接标“技术内容，不翻译”；
+- 窗口太窄（容器 < 520px）时自动变成上下堆叠；
+- 折叠回 Think 行后，界面恢复成原来的纯英文内容。
 
 ## 非目标
 
@@ -46,13 +60,15 @@ dsh-cot-translate/
 │   │   ├── chain.ts          # provider 链编排、超时、fail-open
 │   │   └── routes.ts         # HTTP 路由：校验、状态码、trust fence
 │   └── client/
-│       ├── index.ts          # client 半：注册 turnTail 条目、取 reasoning 数据
-│       ├── card.ts           # 回合译文卡片（原文起手 + 译文/失败态）
+│       ├── index.ts          # client 半：注册 locale/样式，启动 DOM 挂载
+│       ├── attach.ts         # MutationObserver：展开态思考块 → 注入面板
+│       ├── bilingual.ts      # 双语面板：逐段两栏、三态回填、流式追加
+│       ├── text.ts           # 分段、轻量去 Markdown、把片段渲染成 DOM
 │       ├── strip.ts          # 分段保留技术片段 + 句子块 + 分批（纯函数）
-│       ├── translate.ts      # 同源请求 + client 缓存 + 拼回
-│       ├── chat.ts           # assistant-step 数据类型 + reasoning 抽取（纯函数）
+│       ├── translate.ts      # 同源请求（多段合并成批）+ client 缓存 + 拼回
+│       ├── chat.ts           # assistant-step / ChatNode 类型（纯函数）
 │       ├── cordis.ts         # 用到的 cordis 客户端契约（结构类型，不依赖运行时包）
-│       ├── styles.ts         # 运行时注入的卡片样式
+│       ├── styles.ts         # 运行时注入的双栏样式（含行悬停高亮）
 │       └── locales.ts        # 中英文案
 ├── test/                     # node --test：加载构建产物做冒烟 / 真 HTTP 端到端
 ├── scripts/                  # esbuild 打包脚本 + dump-slots.mjs（槽位目录提取器）

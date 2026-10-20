@@ -25,9 +25,15 @@ npm test           # pretest 自动 build；直接加载 lib/client.js 做冒烟
 ## 关键约束（0.2.0-rc.2 实测，2026-10-19）
 
 - `conversation.chat.node` 是 **keyed** 槽位，键域被 `ChatNodeKind` 固定；注册 `assistant-step`
-  等于**替换**官方渲染器（shadow shipped ui）。译文因此走 `conversation.chat.turnTail`
-  （见 DECISIONS ADR-011），不要为了“内联一行”去替换节点渲染器。
-- 拿 reasoning 文本用 `ChatNodeStore.turnDataSource(turn, "assistant-step")`，返回
+  等于**替换**官方渲染器（shadow shipped ui）。译文因此走「观察展开态 + 就地注入 DOM」
+  （DECISIONS ADR-014），不要为了“内联一行”去替换节点渲染器。
+- DOM 注入只用 shell 自己的稳定信号：`[data-variant="think"][data-expanded]`、
+  `[class*="_thinkBody"]`、`[data-chat-node-key]`、`[data-conversation-session]`；
+  不要依赖 hash 类名（`lcKema_xxx` 这类每次构建都会变）。
+- 原文优先从 `ChatNodeStore.source(key)` 数据层取（围栏代码才带反引号，剔除器才准）；
+  DOM `textContent` 只作兜底。
+- 注入失败必须是**安全退化**：面板与 `data-cot-bilingual` 标记同生同灭，绝不出现“原文被隐藏但面板没挂上”。
+- 拿 reasoning 文本也可用 `ChatNodeStore.turnDataSource(turn, "assistant-step")`，返回
   `{ getSnapshot, subscribe }`，快照是含隐藏节点的节点业务数据数组。
 - 运行时自带槽位目录（`dsh-cordis-client-runner/lib/client.js`）；查“某槽位能不能挂、
   挂了会怎样”先查它，提取方法见 `docs/RESEARCH.md` §3.1。

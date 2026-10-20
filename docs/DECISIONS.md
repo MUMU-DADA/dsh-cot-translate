@@ -148,6 +148,9 @@
 - 优点：零侵入、升级安全；能拿到完整 reasoning（含隐藏节点）；list 槽位条目返回 null 即不占位，没有推理的回合什么都不显示。
 - 缺点：**`turnTail` 只在回合完成后渲染**，进行中的回合没有译文 —— “实时”要等 M1b 的浮层/面板形态。
 
+> **本 ADR 的落点选择已被 ADR-014 取代**（2026-10-19 用户明确要求：展开思考时就地双栏对照，
+> 不要回合底部的卡片）。ADR-011 里“不替换 assistant-step”的判断仍然成立，继续有效。
+
 ## ADR-012 配置自己归一化，不引入 schemastery
 
 **背景**：host 插件的配置来自 profile patch。cordis 4 支持 standard-schema 校验（`runtime.Config`），仓库里官方插件都用 `@deepseek-ai/schemastery`。
@@ -179,6 +182,38 @@
 
 - 优点：技术片段**逐字**不变（有 `join === 原文` 的测试）；不需要处理占位符被模型改写的兜底逻辑。
 - 缺点：句子可能被技术片段切成几段分别翻译，译文语序在极端情况下会略生硬；`functionName()` 这类写法会被当成技术片段（可接受，避免误伤代码）。
+
+## ADR-014 展开思考时“就地注入”双语对照面板（观察 DOM）
+
+**背景**：用户要的形态是——展开 Think 行后，**展开的内容本身**左边原文、右边译文，鼠标移到某一段时
+两边一起高亮；不要回合底部的卡片。ADR-011 已经证明槽位做不到：`conversation.chat.node` 是 keyed，
+注册 `assistant-step` 等于替换官方 Assistant 渲染器。
+
+**决策**：用 `MutationObserver` 盯 shell 自己渲染的展开态思考块，拿到思考正文容器后把双语面板
+**插入它的 DOM 里**，并给容器打 `data-cot-bilingual` 由 CSS 隐藏原来的纯文本渲染（原文仍完整显示在左栏）。
+
+- 选择器只用 shell 的稳定信号：`[data-variant="think"][data-expanded]`（ReasoningRow 的 data 属性）、
+  `[class*="_thinkBody"]`（CSS Module 名字保留 `thinkBody` 后缀）、`[data-chat-node-key]`、
+  `[data-conversation-session]`。
+- 原文优先从 **ChatNodeStore 数据层**取（`[data-chat-node-key]` + 第几个 reasoning 行 → 块的 `text`），
+  这样围栏代码带反引号进入剔除器，不会被当自然语言送翻；数据层拿不到时才退回 `textContent`。
+- 悬停高亮用纯 CSS：每行是一个包含左右两栏的 grid 行，`:hover` 整行变色，天然“两边一起高亮”。
+- 面板是纯 DOM（不用 React），不参与 shell 的 React 树，避免互相踩。
+
+**备选与放弃原因**
+
+- 回合底部卡片（ADR-011）：用户明确否掉。
+- `shell.overlay` 浮层贴边：不侵入 shell DOM，但要自己算位置、处理滚动/宽度，且**不是**“展开内容本身”，放弃。
+- 替换 `assistant-step` 渲染器：要重写 markdown/图片/工具/折叠，升级即碎，放弃。
+
+**后果与风险（必须记住）**
+
+- 侵入 shell 渲染出的 DOM：DSH 升级后 `data-variant`/`_thinkBody` 一变，注入就会失效 —— 失效时**只是不显示面板**，
+  不隐藏原文（隐藏标记和面板同时创建/移除），所以是安全退化。
+- MutationObserver 覆盖整棵文档树（`childList/subtree/attributes/characterData`，节流 120ms）：
+  流式输出期间会频繁触发，但每次只做一次 `querySelectorAll`，成本可控。
+- CSS 隐藏原文渲染是“显示层替换”：只要面板移除，`data-cot-bilingual` 同时移除，原文自动恢复。
+- 测试用 jsdom 覆盖了注入/回填/清理/数据层优先/流式追加（`test/client-attach.test.mjs`）。
 
 ---
 

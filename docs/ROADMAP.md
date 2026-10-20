@@ -10,26 +10,30 @@
 
 **验收**：`npm run build` 能产出 `lib/index.js` 与 `lib/client.js`（骨架代码可打包）。
 
-## M1a 可行性 spike：拿到 reasoning 文本 + 定下渲染位置 🟡（代码完成，待真机验收）
+## M1 可行性 + 渲染位置 ✅（2026-10-19）
 
-- ✅ 核实 `ChatNodeStore.turnDataSource(turn, kind)`：返回可订阅源，含隐藏节点，按 anchor 顺序给业务数据
-- ✅ 核实 `conversation.chat.node` 同名 key 语义 = **替换**（keyed，`shadows-shipped-ui`）→ 不内联，见 DECISIONS ADR-011
-- ✅ 改用 `conversation.chat.turnTail` 注册回合译文卡片（`lib/client.js`，占位文案）
-- ✅ `test/client-card.test.mjs` 冒烟：bundle 外壳、apply 注册、hook 取数、卡片渲染 4 项全绿
-- ✅ 装进 web profile（`dsh plugin --profile web add <本仓库>`，pnpm link）
+- ✅ 核实 `ChatNodeStore.turnDataSource(turn, kind)` / `source(key)`：可订阅源，含隐藏节点
+- ✅ 核实 `conversation.chat.node` 是 keyed、注册同名 key = **替换**官方渲染器（`shadows-shipped-ui`）
+- ✅ 回合底部卡片方案（`turnTail`）实现后**被用户否掉** → ADR-014
+- ✅ 定案：**展开思考时就地注入双语对照面板**（左原文 / 右译文 / 行悬停联动高亮）
+
+**验收**：见 M1b。
+
+## M1b 就地双语对照面板 🟡（代码与 jsdom 测试完成，待真机验收）
+
+- ✅ `MutationObserver` 盯 `[data-variant="think"][data-expanded]`，把面板插进 `_thinkBody`
+- ✅ 原文优先从 ChatNodeStore 数据层取（围栏代码带反引号进入剔除器）；拿不到退回 `textContent`
+- ✅ 逐段成行：左栏原文（代码 `<pre>`/`<code>` 等宽）、右栏译文；窄容器自动上下堆叠
+- ✅ 行悬停整行高亮（纯 CSS，左右两栏天然同时亮）
+- ✅ 三态回填：译文 / “技术内容，不翻译” / “翻译不可用”；流式追加只翻新增段落，
+  运行中的尾巴等 400ms 稳定窗口再送翻（避免每 token 一次请求）
+- ✅ 折叠或重渲染时移除面板与隐藏标记，shell 原文自动恢复
+- ✅ `test/client-attach.test.mjs` 8 项（jsdom：注入、回填、清理、数据层优先、流式追加、
+  尾巴稳定窗口、文案、切段）
 - ⬜ **完整重启桌面端**后在真实会话里验收（重启会中断当前会话，留给用户操作）
 
-**验收**：真实会话里，已完成回合底部出现 `.cot-translation` 卡片，摘要显示 reasoning 段数与字数；
-展开后显示中文译文（本地模型不可用时显示“翻译不可用，先看原文”）；刷新后仍在。
-
-## M1b 实时形态：让进行中的回合也有译文
-
-`turnTail` 只在回合完成后渲染。实时需要另一条订阅路径（`useChat` 快照或直接订阅节点源），落点二选一：
-
-- `shell.overlay` 浮层：贴着当前回合显示，最接近“叠加显示”，但要处理定位与滚动
-- `sidebar.right.pane.tab` 右侧译文面板：稳、可长时间阅读，但不是“旁边”
-
-**验收**：模型流式输出途中，界面上的中文译文随之分批出现；关闭后无残留。
+**验收**：展开任意 Think 行 → 出现双栏对照；鼠标移到某段，左右两边同时高亮；代码/路径/链接保持原样；
+翻译不可用时右栏提示、左栏仍可读；折叠后恢复成原来的纯文本。
 
 ## M2 host 翻译接口 + 本地 Ollama provider ✅（2026-10-19，代码与测试完成）
 

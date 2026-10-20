@@ -5,12 +5,13 @@
 | 板块 | 状态 | 落地文件 |
 |---|---|---|
 | host 路由 + provider 链 + 缓存 | ✅ M2 | `src/index.ts`、`src/host/*` |
-| client 取数 + 剔除/分批/拼回 + 回合卡片 | ✅ M1a/M3 | `src/client/*` |
-| 实时形态（进行中的回合） | ⬜ M1b | — |
+| client 取数 + 剔除/分批/拼回 + 请求 | ✅ M3 | `src/client/{strip,translate,text}.ts` |
+| **展开思考时就地双栏对照（DOM 注入）** | ✅ M1b | `src/client/{attach,bilingual,styles}.ts` |
 | 设置页 / provider 排序 UI | ⬜ M4 | — |
 
-渲染落点已由 ADR-011 定为 `conversation.chat.turnTail`（回合底部卡片），**不是**下面的
-“内联在 Think 行下方”—— 内联需要替换官方 `assistant-step` 渲染器，已否决。
+渲染落点（ADR-014）：**展开 Think 行时就地注入**双语面板 —— 槽位做不到这件事
+（`conversation.chat.node` 是 keyed，注册 `assistant-step` 等于替换官方渲染器），
+因此改为观察 shell 自己渲染的展开态思考块，往它的 DOM 里插面板。
 
 ## 总览
 
@@ -63,17 +64,20 @@
 
 **职责**：取文本、剔除、分批、发请求、渲染。
 
-- **数据源**：`conversation.chat.turnTail` 槽位（list，session 作用域）+ `inject` 里的
-  `keyedHooks.cotSteps(turnKey)` → `ChatNodeStore.turnDataSource(turn, "assistant-step")`，
-  含隐藏节点、按 anchor 顺序。见 RESEARCH §3.3。
+- **数据源**：展开态思考块由 `MutationObserver` 发现（`[data-variant="think"][data-expanded]`）；
+  原文优先从数据层取 —— `[data-chat-node-key]` + `[data-conversation-session]` 定位节点，
+  再用 `ChatNodeStore.source(key)` 取第 N 个 reasoning 块的 `text`；拿不到才退回 DOM `textContent`。
 - **剔除规则**（`src/client/strip.ts`，ADR-013）：围栏代码块、行内代码、URL、Windows/POSIX
   路径、`fn()` 调用。**分段保留**而不是占位符 —— 技术片段整段留在原位，只把自然语言片段送翻。
 - **分批**：句子块 ≤ 240 字符；每请求 ≤ 8 块、≤ 1200 字符；失败整段退回原文（不做半成功）。
-- **渲染方案**（ADR-011）
-  1. ✅ 回合尾部 `conversation.chat.turnTail` 折叠卡片（已实现，默认折叠 2 段，可展开）；
-  2. ⬜ `shell.overlay` 浮窗 → 实时形态（M1b）；
-  3. ⬜ 右侧面板 `sidebar.right.pane.tab`（整段会话译文视图，M4 之后）。
-  内联在 Think 行下方**不可行**：`conversation.chat.node` 是 keyed，换 key 等于换掉官方渲染器。
+- **渲染方案**（ADR-014）：把双语面板**插进 shell 的思考正文容器**，再给容器打
+  `data-cot-bilingual` 由 CSS 隐藏原来的纯文本渲染。
+  - 每行两列：左原文（代码 `<pre>` / 行内代码 `<code>` 等宽）、右译文；
+  - 行悬停/聚焦整行高亮 —— 纯 CSS，左右天然同时亮；
+  - 窄容器（`@container max-width: 520px`）退化为上下堆叠；
+  - 折叠/重渲染时面板与标记一起移除，shell 原文自动恢复。
+  - **流式节流**：进行中的思考块最后一段还在增长，面板等它 400ms 没再变化才送翻
+    （`tailSettleMs`），否则每个 token 都会打一次模型；流式结束后新段落立即送翻。
 - **缓存**：client 进程内 500 条 + host LRU 双层；`localStorage` 持久化留到 M3 收尾。
 - **设置入口**：`settings.general.item`（M4）。
 

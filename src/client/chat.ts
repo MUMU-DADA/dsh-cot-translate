@@ -32,6 +32,12 @@ export interface ReasoningSegment {
   readonly step?: number
 }
 
+/** ChatNodeStore 里的一个节点（只声明本插件用到的部分）。 */
+export interface ChatNode {
+  readonly key: string
+  readonly data: AssistantStepData
+}
+
 /**
  * 按节点顺序、块顺序收集 reasoning 文本。
  *

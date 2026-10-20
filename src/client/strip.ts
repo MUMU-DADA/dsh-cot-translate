@@ -8,39 +8,56 @@
  * 纯函数，不碰 DOM / 网络，便于单测。
  */
 
+/** 原样保留片段的种类（也用于双语面板里给代码/链接换字体）。 */
+export type KeepKind = 'code' | 'url' | 'path' | 'call'
+
 /** 一个片段：`translate` 为 true 才送翻，false 原样保留。 */
 export interface TextSpan {
   readonly translate: boolean
   readonly text: string
+  /** 仅保留片段有；翻译片段为 undefined。 */
+  readonly kind?: KeepKind
 }
 
-/** 围栏代码块 / 行内代码 / URL / Windows 路径 / POSIX 路径。 */
-const KEEP_PATTERNS: readonly string[] = [
-  '```[\\s\\S]*?(?:```|$)', // 围栏代码块（未闭合也吃掉）
-  '`[^`\\n]+`', // 行内代码
-  'https?://[^\\s<>()"\'`]+', // URL
-  '[A-Za-z]:\\\\(?:[^\\\\\\s"\'<>|:*?]+\\\\)*[^\\\\\\s"\'<>|:*?]*', // C:\path\to\file
-  '(?<![\\w.])/(?:[\\w.@+-]+/)+[\\w.@+-]*', // /usr/local/bin
-  '\\b[a-zA-Z_][\\w.]*\\(\\s*\\)', // functionName()
+/** 原样保留的区间及其种类。 */
+export interface KeepRange {
+  readonly start: number
+  readonly end: number
+  readonly kind: KeepKind
+}
+
+/** 技术片段的匹配规则：顺序有意义（先围栏代码，再行内代码，再 URL / 路径）。 */
+const KEEP_PATTERNS: ReadonlyArray<{ kind: KeepKind; pattern: string }> = [
+  { kind: 'code', pattern: '```[\\s\\S]*?(?:```|$)' }, // 围栏代码块（未闭合也吃掉）
+  { kind: 'code', pattern: '`[^`\\n]+`' }, // 行内代码
+  { kind: 'url', pattern: 'https?://[^\\s<>()"\'`]+' }, // URL
+  { kind: 'path', pattern: '[A-Za-z]:\\\\(?:[^\\\\\\s"\'<>|:*?]+\\\\)*[^\\\\\\s"\'<>|:*?]*' }, // C:\path\to\file
+  { kind: 'path', pattern: '(?<![\\w.])/(?:[\\w.@+-]+/)+[\\w.@+-]*' }, // /usr/local/bin
+  { kind: 'call', pattern: '\\b[a-zA-Z_][\\w.]*\\(\\s*\\)' }, // functionName()
 ]
 
-/** 收集所有「原样保留」的区间，并合并重叠。 */
-export function keepRanges(text: string): Array<[number, number]> {
-  const ranges: Array<[number, number]> = []
-  for (const pattern of KEEP_PATTERNS) {
+/** 收集所有「原样保留」的区间，合并重叠（重叠时保留更长的那个种类）。 */
+export function keepRanges(text: string): KeepRange[] {
+  const ranges: KeepRange[] = []
+  for (const { kind, pattern } of KEEP_PATTERNS) {
     const regex = new RegExp(pattern, 'g')
     for (const match of text.matchAll(regex)) {
       const index = match.index
       if (index === undefined) continue
-      ranges.push([index, index + match[0].length])
+      ranges.push({ start: index, end: index + match[0].length, kind })
     }
   }
-  ranges.sort((left, right) => left[0] - right[0] || left[1] - right[1])
-  const merged: Array<[number, number]> = []
+  ranges.sort((left, right) => left.start - right.start || right.end - left.end)
+  const merged: KeepRange[] = []
   for (const range of ranges) {
     const last = merged[merged.length - 1]
-    if (last !== undefined && range[0] <= last[1]) last[1] = Math.max(last[1], range[1])
-    else merged.push([range[0], range[1]])
+    if (last !== undefined && range.start <= last.end) {
+      if (range.end > last.end) {
+        merged[merged.length - 1] = { start: last.start, end: range.end, kind: last.kind }
+      }
+      continue
+    }
+    merged.push({ ...range })
   }
   return merged
 }
@@ -49,10 +66,10 @@ export function keepRanges(text: string): Array<[number, number]> {
 export function splitForTranslation(text: string): TextSpan[] {
   const spans: TextSpan[] = []
   let cursor = 0
-  for (const [start, end] of keepRanges(text)) {
-    if (start > cursor) spans.push({ translate: true, text: text.slice(cursor, start) })
-    spans.push({ translate: false, text: text.slice(start, end) })
-    cursor = end
+  for (const range of keepRanges(text)) {
+    if (range.start > cursor) spans.push({ translate: true, text: text.slice(cursor, range.start) })
+    spans.push({ translate: false, text: text.slice(range.start, range.end), kind: range.kind })
+    cursor = range.end
   }
   if (cursor < text.length) spans.push({ translate: true, text: text.slice(cursor) })
   return spans

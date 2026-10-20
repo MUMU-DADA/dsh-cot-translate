@@ -8,7 +8,7 @@
  * 见 docs/RESEARCH.md §3。
  */
 
-import type { AssistantStepData } from './chat'
+import type { AssistantStepData, ChatNode } from './chat'
 
 /** 可订阅快照源：`ChatNodeStore` 的 `source()` / `turnDataSource()` 返回该形状。 */
 export interface SnapshotSource<T> {
@@ -58,6 +58,8 @@ export interface SessionsService {
 export interface ChatSnapshot {
   readonly nodes: {
     turnDataSource(turn: number, kind: string): SnapshotSource<readonly AssistantStepData[]>
+    /** 按节点 key 取单个节点（含业务数据）；未加载时为 undefined。 */
+    source(key: string): SnapshotSource<ChatNode | undefined>
   }
 }
 

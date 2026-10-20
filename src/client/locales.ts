@@ -1,23 +1,21 @@
 /**
- * 设置页与 UI 文案（中/英）。
+ * UI 文案（中/英）。
  *
- * 实现阶段换成 ctx.locale.register 的命名空间字典；组件里通过 `t(key, params)`
- * 取文案，找不到时退回中文原文（见 `fallbackTranslate`），避免界面出现裸 key。
+ * 通过 `ctx.locale.register(name, LOCALES)` 注册；组件里用 `t(key)` 取，
+ * 拿不到宿主 t 时退回中文原文（见 `fallbackTranslate`），避免界面出现裸 key。
  */
 
 /** 一份命名空间字典：flat key → 文案模板（`{name}` 为插值位）。 */
 export type NamespaceDictionary = Record<string, string>
 
 const zh: NamespaceDictionary = {
-  // ── M1 回合卡片 ────────────────────────────────────────────
-  'card.title': '思维链译文',
-  'card.badge': '{segments} 段 · {chars} 字',
-  'card.original': '原文',
-  'card.loading': '翻译中…',
-  'card.failed': '翻译不可用，先看原文',
-  'card.note': '只翻译自然语言：代码、路径、链接保持原样。',
-  'card.expand': '展开全部 {count} 段',
-  'card.collapse': '收起',
+  // ── 双语对照面板 ──────────────────────────────────────────
+  'bi.original': '原文',
+  'bi.translation': '译文',
+  'bi.loading': '翻译中…',
+  'bi.failed': '翻译不可用',
+  'bi.technical': '技术内容，不翻译',
+  'bi.note': '本地模型翻译 · 只翻自然语言，代码 / 路径 / 链接保持原样',
 
   // ── 设置页（M4 用）─────────────────────────────────────────
   section: '思维链翻译',
@@ -34,19 +32,18 @@ const zh: NamespaceDictionary = {
   providerFree: '免费在线（Google / Bing）',
   statusRunning: '翻译中…',
   statusFailed: '翻译失败，显示原文',
-  original: '原文',
 }
 
 const en: NamespaceDictionary = {
-  'card.title': 'Chain-of-thought translation',
-  'card.badge': '{segments} segments · {chars} chars',
-  'card.original': 'Source',
-  'card.loading': 'Translating…',
-  'card.failed': 'Translation unavailable; showing the original',
-  'card.note': 'Only natural language is translated; code, paths and links stay untouched.',
-  'card.expand': 'Show all {count} segments',
-  'card.collapse': 'Collapse',
+  // ── bilingual panel ───────────────────────────────────────
+  'bi.original': 'Source',
+  'bi.translation': 'Translation',
+  'bi.loading': 'Translating…',
+  'bi.failed': 'Translation unavailable',
+  'bi.technical': 'Technical content (not translated)',
+  'bi.note': 'Local model · natural language only; code, paths and links stay as-is',
 
+  // ── settings (M4) ─────────────────────────────────────────
   section: 'Chain-of-thought translation',
   target: 'Target language',
   providerChain: 'Translation providers (tried in order)',
@@ -61,7 +58,6 @@ const en: NamespaceDictionary = {
   providerFree: 'Free online (Google / Bing)',
   statusRunning: 'Translating…',
   statusFailed: 'Translation failed; showing the original',
-  original: 'Original',
 }
 
 /** 交给 `ctx.locale.register(namespace, LOCALES)` 的字典表。 */

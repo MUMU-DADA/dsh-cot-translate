@@ -1,94 +1,129 @@
 /**
- * 卡片样式：运行时注入一个 <style>，随插件卸载移除。
+ * 双语面板样式：运行时注入一个 <style>，随插件卸载移除。
  *
- * 只用 shell 已有的 CSS 变量（`--dsw-*`）取色，跟随明暗主题；
- * 类名统一 `cotx-` 前缀，另挂 `.cot-translation` 作为验收标记
- * （docs/ROADMAP.md M1）。样式不写进 DOM 内联属性，方便以后换成
- * 构建期 CSS 而不动组件。
+ * 版式：每行两列（左原文 / 右译文），行悬停时整行高亮 —— 高亮由 CSS 的
+ * `.cotx-bi-row:hover` 完成，左右两栏天然同时亮，不需要 JS 联动。
+ * 窄容器下退化为上下堆叠。
+ *
+ * 只用 shell 已有的 `--dsw-*` 变量取色，跟随明暗主题。
  */
-
-/** 验收与查询用标记类。 */
-export const CARD_MARKER_CLASS = 'cot-translation'
 
 const STYLE_ATTR = 'data-cot-translate-styles'
 
 const CSS = `
-.cotx-root {
-  box-sizing: border-box;
-  border: .5px solid var(--dsw-alias-border-l1, rgba(127, 127, 127, .28));
-  border-radius: var(--dsw-radius-lg, 10px);
-  padding: 8px 12px;
-  margin: 0;
-  color: var(--dsw-alias-label-primary, inherit);
-  font-size: 13px;
-  line-height: 20px;
+/* 面板就位后隐藏 shell 原来的纯文本渲染，避免同一段思考显示两遍。 */
+[data-cot-bilingual] > :not([data-cot-panel]) {
+  display: none !important;
 }
-.cotx-head {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
+
+.cotx-bi {
+  container-type: inline-size;
+  display: block;
+  margin: 2px 0 4px;
 }
-.cotx-title {
-  font-weight: 500;
-  color: var(--dsw-alias-label-secondary, inherit);
-  flex: none;
-}
-.cotx-badge {
+
+.cotx-bi-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  column-gap: 16px;
+  padding: 0 8px 4px;
   color: var(--dsw-alias-label-tertiary, inherit);
   font-size: 11px;
-  flex: none;
+  line-height: 16px;
+  letter-spacing: .04em;
 }
-.cotx-spacer { flex: 1 1 auto; }
-.cotx-toggle {
-  flex: none;
-  font: inherit;
-  font-size: 11px;
-  color: var(--dsw-alias-label-secondary, inherit);
-  background: none;
-  border: 0;
-  padding: 2px 4px;
-  cursor: pointer;
-  border-radius: var(--dsw-radius-sm, 6px);
-}
-.cotx-toggle:hover { color: var(--dsw-alias-label-primary, inherit); }
-.cotx-toggle:focus-visible {
-  outline: var(--dsw-focus-ring-width, 2px) solid var(--dsw-focus-ring-color, currentColor);
-  outline-offset: 2px;
-}
-.cotx-body {
+
+.cotx-bi-rows {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  margin-top: 6px;
+  gap: 2px;
 }
-.cotx-segment { min-width: 0; }
-.cotx-source {
-  color: var(--dsw-alias-label-tertiary, inherit);
-  font-size: 11px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+
+.cotx-bi-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  column-gap: 16px;
+  padding: 6px 8px;
+  border-radius: var(--dsw-radius-md, 8px);
+  transition: background-color .12s ease;
 }
-.cotx-placeholder,
-.cotx-translation {
-  color: var(--dsw-alias-label-primary, inherit);
+
+/* 悬停/键盘聚焦：整行（左右两栏）一起高亮，这就是“两边对照”。 */
+.cotx-bi-row:hover,
+.cotx-bi-row:focus-within {
+  background: var(--dsw-alias-interactive-bg-hover, rgba(127, 127, 127, .1));
+}
+
+.cotx-bi-cell {
+  min-width: 0;
+  font-size: 13px;
+  line-height: 20px;
   white-space: pre-wrap;
   word-break: break-word;
 }
-.cotx-translation[data-cot-phase='loading'] {
+
+.cotx-bi-src {
+  color: var(--dsw-alias-label-secondary, inherit);
+}
+
+.cotx-bi-dst {
+  color: var(--dsw-alias-label-primary, inherit);
+}
+
+.cotx-bi-dst[data-cot-state='loading'],
+.cotx-bi-dst[data-cot-state='failed'],
+.cotx-bi-dst[data-cot-state='technical'] {
   color: var(--dsw-alias-label-tertiary, inherit);
   font-size: 12px;
 }
-.cotx-translation[data-cot-phase='failed'] {
-  color: var(--dsw-alias-label-tertiary, inherit);
+
+.cotx-bi-inline-code,
+.cotx-bi-link {
+  font-family: var(--dsw-font-markdown-code-block-small, ui-monospace, SFMono-Regular, Menlo, monospace);
   font-size: 12px;
-  font-style: italic;
+  padding: 0 3px;
+  border-radius: 4px;
+  background: var(--dsw-alias-markdown-code-block, rgba(127, 127, 127, .12));
+  word-break: break-all;
 }
-.cotx-note {
-  margin-top: 6px;
+
+.cotx-bi-link {
+  color: var(--dsw-alias-state-business-primary, inherit);
+  background: none;
+  padding: 0;
+}
+
+.cotx-bi-code {
+  margin: 2px 0;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: var(--dsw-alias-markdown-code-block, rgba(127, 127, 127, .12));
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  line-height: 18px;
+  white-space: pre-wrap;
+  overflow-x: auto;
+}
+
+.cotx-bi-note {
+  padding: 4px 8px 0;
   color: var(--dsw-alias-label-tertiary, inherit);
   font-size: 11px;
+  line-height: 16px;
+}
+
+@container (max-width: 520px) {
+  .cotx-bi-head {
+    display: none;
+  }
+  .cotx-bi-row {
+    grid-template-columns: minmax(0, 1fr);
+    row-gap: 4px;
+  }
+  .cotx-bi-src {
+    font-size: 12px;
+    color: var(--dsw-alias-label-tertiary, inherit);
+  }
 }
 `
 
