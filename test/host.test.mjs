@@ -744,6 +744,14 @@ test('provider 链：磁盘缓存命中不再打模型（跨实例）', withTemp
   assert.equal(cached.provider, 'cache')
   assert.equal(secondFetch.calls.length, 0, '磁盘缓存命中后不应调用 provider')
 }))
+test('设置：target 默认空（待客户端初始化），已知语言才保留', () => {
+  assert.equal(host.normalizeSettings({}).target, '', '默认不预设语言')
+  assert.equal(host.normalizeSettings({ target: 'fr' }).target, 'fr')
+  assert.equal(host.normalizeSettings({ target: 'zh-Hant' }).target, 'zh-Hant')
+  assert.equal(host.normalizeSettings({ target: 'nope' }).target, '', '未知语言码回退为空')
+  assert.equal(host.normalizeSettings({ target: '' }).target, '')
+})
+
 test('多语言：提示词用完整英文语言名（缩写会掉质量）', () => {
   assert.equal(host.targetLabel('zh-Hans'), 'Simplified Chinese')
   assert.equal(host.targetLabel('zh-Hant'), 'Traditional Chinese')

@@ -30,7 +30,7 @@ import type { RuntimeDeps } from './runtime'
 import { createSessionModelProvider } from './session-model'
 import type { SessionModelHooks } from './session-model'
 import { PersistentCache, type CacheStats } from './persistent-cache'
-import { loadSettings, patchSettings, type CotSettings } from './settings'
+import { FALLBACK_TARGET, loadSettings, patchSettings, type CotSettings } from './settings'
 
 export interface ControlDeps {
   /** profile patch 里的静态配置（baseURL、timeout 等）。 */
@@ -98,6 +98,8 @@ export class Control {
   private buildConfig(): CotConfig {
     const base = normalizeConfig(this.deps.staticConfig)
     const modelPath = resolveModelPath(this.settings.modelId) ?? ''
+    // 空 target = 客户端还没初始化：先用兜底语言，等客户端写入真正语言。
+    const target = this.settings.target === '' ? FALLBACK_TARGET : this.settings.target
     // 静态配置里的 chain 是底线（测试/自定义部署用它锁定来源）；
     // 「用对话模型翻译」只会在最前面插一档。
     const chain: ProviderId[] = [...base.chain]
@@ -110,7 +112,7 @@ export class Control {
     return {
       ...base,
       enabled: base.enabled && this.settings.enabled,
-      target: this.settings.target,
+      target,
       chain,
       llamacpp: { ...base.llamacpp, modelPath },
     }

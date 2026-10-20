@@ -27,13 +27,17 @@ export interface CotSettings {
   target: string
 }
 
+/** 目标语言为空（""）表示「还没定，等客户端按自己的语言初始化」。 */
 export const DEFAULT_SETTINGS: CotSettings = {
   enabled: true,
   mode: 'semi',
   modelId: 'hy-mt2-1.8b-q4',
   useSessionModel: false,
-  target: 'zh-Hans',
+  target: '',
 }
+
+/** target 未初始化时，host 端兜底用的语言（客户端没来/拿不到时）。 */
+export const FALLBACK_TARGET = 'zh-Hans'
 
 /** 插件数据目录（设置、下载的模型）。`COTX_HOME` 可覆盖（测试用）。 */
 export function dataDir(): string {
@@ -55,12 +59,12 @@ export function normalizeSettings(raw: unknown): CotSettings {
     typeof source.modelId === 'string' && source.modelId.trim() !== ''
       ? source.modelId.trim()
       : DEFAULT_SETTINGS.modelId
-  // 只接受 Hy-MT2 支持的语言码；写错/手改成不认识的码就回退默认。
+  // 只接受 Hy-MT2 支持的语言码；"" 表示待客户端初始化（见 prefs.ensureTargetLanguage）。
   const rawTarget =
-    typeof source.target === 'string' && source.target.trim() !== ''
+    typeof source.target === 'string'
       ? source.target.trim().slice(0, 32)
       : DEFAULT_SETTINGS.target
-  const target = isKnownLanguage(rawTarget) ? rawTarget : DEFAULT_SETTINGS.target
+  const target = rawTarget === '' || isKnownLanguage(rawTarget) ? rawTarget : DEFAULT_SETTINGS.target
   return {
     enabled: typeof source.enabled === 'boolean' ? source.enabled : DEFAULT_SETTINGS.enabled,
     mode,

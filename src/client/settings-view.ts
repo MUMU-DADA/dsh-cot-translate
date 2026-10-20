@@ -404,6 +404,9 @@ export function SettingsSection(props: SettingsSectionProps): ReactElement {
           void patch({ target: event.target.value })
         },
       },
+      settings.target === ''
+        ? h('option', { key: 'unset', value: '' }, tr('set.targetUnset'))
+        : null,
       state.languages.map((language) =>
         h('option', { key: language.code, value: language.code }, language.zh),
       ),

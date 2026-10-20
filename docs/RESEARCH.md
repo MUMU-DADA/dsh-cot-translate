@@ -234,6 +234,7 @@ Ollama 现成标签（已核实）：
 | 会话当前模型 | `sessions` 服务的 `get(sessionId)` → `session.requestHeader()?.config` 里有上一次请求的 `{ provider, model }`（会话不存在/未请求过时为 undefined） |
 | 服务访问 | cordis 服务同时可通过 `ctx.<name>` 或 `ctx.get('<name>')` 拿到（本插件两个入口都试） |
 | 插件数据目录 | `~/.dsh/cot-translate/`（`COTX_HOME` 可覆盖，测试用） |
+| 客户端语言 | **`document.documentElement.lang`** 是权威值（`dsh-client-locale` 用当前 locale 同步它）；`navigator.language` 只是 WebView/系统语言，可能不一致 |
 
 **踩坑**
 

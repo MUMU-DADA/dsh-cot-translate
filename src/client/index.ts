@@ -15,7 +15,7 @@ import { attachBilingual } from './attach'
 import type { AssistantStepData } from './chat'
 import type { ClientContext } from './cordis'
 import { LOCALES } from './locales'
-import { loadPrefs, onPrefs } from './prefs'
+import { ensureTargetLanguage, loadPrefs, onPrefs } from './prefs'
 import { SettingsSection } from './settings-view'
 import { installStyles } from './styles'
 import { sharedTranslator } from './translate'
@@ -77,6 +77,8 @@ export function apply(ctx: ClientContext): void {
 
   // 设置镜像：启动时拉一次，之后设置页保存会广播。
   void loadPrefs()
+  // 第一次运行：目标语言默认跟随客户端语言（写一次就固定为用户可改的设置）。
+  void ensureTargetLanguage()
 
   // 换模型/开关变化：清掉客户端译文缓存，避免展示上一个模型的译文。
   ctx.effect(
@@ -104,7 +106,15 @@ export { attachBilingual } from './attach'
 export { createBilingualPanel } from './bilingual'
 export { collectReasoning, reasoningCharCount, singleLinePreview } from './chat'
 export { LOCALES, fallbackTranslate } from './locales'
-export { DEFAULT_PREFS, loadPrefs, onPrefs, prefs, setPrefs } from './prefs'
+export {
+  DEFAULT_PREFS,
+  detectTargetLanguage,
+  ensureTargetLanguage,
+  loadPrefs,
+  onPrefs,
+  prefs,
+  setPrefs,
+} from './prefs'
 export { SettingsSection } from './settings-view'
 export {
   MAX_CHUNK_CHARS,

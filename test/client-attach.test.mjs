@@ -448,3 +448,60 @@ test('apply：注册设置页（settings.section）并保持双语注入', async
     ['settings.section'],
   )
 })
+test('目标语言默认跟随客户端语言（检测映射）', () => {
+  assert.equal(client.detectTargetLanguage(['zh-CN']), 'zh-Hans')
+  assert.equal(client.detectTargetLanguage(['zh-Hans']), 'zh-Hans')
+  assert.equal(client.detectTargetLanguage(['zh-TW']), 'zh-Hant')
+  assert.equal(client.detectTargetLanguage(['zh-HK']), 'zh-Hant')
+  assert.equal(client.detectTargetLanguage(['en-US']), 'en')
+  assert.equal(client.detectTargetLanguage(['ja-JP']), 'ja')
+  assert.equal(client.detectTargetLanguage(['fr-FR']), 'fr')
+  assert.equal(client.detectTargetLanguage(['de']), 'de')
+  assert.equal(client.detectTargetLanguage(['pt-BR']), 'pt')
+  // <html lang> 作为第二候选；都不认识回退英文
+  assert.equal(client.detectTargetLanguage([undefined, 'ja']), 'ja')
+  assert.equal(client.detectTargetLanguage(['sv-SE']), 'en')
+  assert.equal(client.detectTargetLanguage([]), 'en')
+})
+test('首次运行：目标语言按客户端语言写入一次，之后不再覆盖', async () => {
+  const posted = []
+  const state = {
+    settings: {
+      enabled: true,
+      mode: 'semi',
+      modelId: 'hy-mt2-1.8b-q4',
+      useSessionModel: false,
+      target: '',
+    },
+  }
+  const originalFetch = window.fetch
+  window.fetch = async (url, init) => {
+    if (String(url).endsWith('/_cotx/settings')) {
+      const body = JSON.parse(init.body)
+      posted.push(body)
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ ...state, settings: { ...state.settings, ...body } }),
+      }
+    }
+    return { ok: true, status: 200, json: async () => state }
+  }
+  const previousLang = document.documentElement.lang
+  document.documentElement.lang = 'ja'
+  try {
+    await client.ensureTargetLanguage()
+    assert.deepEqual(posted, [{ target: 'ja' }], '应按 <html lang> 写入目标语言')
+    assert.equal(client.prefs().target, 'ja')
+
+    // 已经初始化过：第二次只读不写
+    posted.length = 0
+    state.settings.target = 'ja'
+    await client.ensureTargetLanguage()
+    assert.equal(posted.length, 0, '有显式目标语言后不应再覆盖')
+  } finally {
+    window.fetch = originalFetch
+    document.documentElement.lang = previousLang
+    client.setPrefs({ target: '' })
+  }
+})

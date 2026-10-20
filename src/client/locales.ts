@@ -30,7 +30,8 @@ const zh: NamespaceDictionary = {
   'set.modeSemi': '半自动',
   'set.modeAuto': '自动',
   'set.target': '译文语言',
-  'set.targetHint': '翻译成哪种语言（支持 Hy-MT2 的 30+ 种语言；改完立即生效）。',
+  'set.targetHint': '翻译成哪种语言（支持 Hy-MT2 的 30+ 种语言；改完立即生效）。默认跟随安装插件时的客户端语言。',
+  'set.targetUnset': '（跟随客户端语言）',
 
   // ── 设置页：模型 ──────────────────────────────────────────
   'set.model': '本地翻译模型',
@@ -88,7 +89,9 @@ const en: NamespaceDictionary = {
   'set.modeSemi': 'Semi-auto',
   'set.modeAuto': 'Auto',
   'set.target': 'Target language',
-  'set.targetHint': 'Translate into this language (30+ languages supported by Hy-MT2; takes effect immediately).',
+  'set.targetHint':
+    'Translate into this language (30+ supported by Hy-MT2; takes effect immediately). Defaults to the client language when the plugin was installed.',
+  'set.targetUnset': '(follow client language)',
 
   // ── settings: models ──────────────────────────────────────
   'set.model': 'Local translation model',
