@@ -1,9 +1,11 @@
 /**
  * provider 适配器：把“一段英文 → 一段中文”抽象成统一的 translate()。
  *
- * 当前两个实现：
- *  1. ollama —— 本地 Hy-MT2（ADR-004），走 `/api/chat`，非流式、逐段串行；
- *  2. google —— 官方免费接口（非官方授权），仅作为最后兜底（ADR-008）。
+ * 当前三个实现：
+ *  1. llamacpp —— 本地 Hy-MT2 的 GGUF，走 llama-server 的 `/v1/chat/completions`
+ *     （单文件二进制，Vulkan/CUDA 都行，**没有 GUI**；ADR-017）；
+ *  2. ollama —— 可选的 Ollama 路径（装了才用，默认禁用）；
+ *  3. google —— 免费接口，仅作为最后兜底（ADR-008）。
  *
  * 红线段（AGENTS.md）：这里**不做**任何代码/路径剔除 —— 剔除是 client 半的
  * 责任，送进来的 segments 已经是自然语言。适配器也不打印原文，只报长度与耗时。
@@ -11,8 +13,17 @@
 
 import type { ProviderKind } from '../shared'
 import type { CotConfig } from './config'
-import type { OllamaRuntimeDeps } from './runtime'
-import { ensureOllamaServer } from './runtime'
+import type { LaunchPlan, RuntimeDeps } from './runtime'
+import {
+  defaultLlamaServerBin,
+  defaultModelPath,
+  defaultOllamaBin,
+  ensureLocalServer,
+  ensureOllamaServer,
+  hostOf,
+  modelLabel,
+  portOf,
+} from './runtime'
 
 /** 只取 fetch 的可调用签名，便于单测注入假实现。 */
 export type FetchLike = (input: string, init?: RequestInit) => Promise<Response>
@@ -70,7 +81,7 @@ function googleTarget(target: string): string {
  * Hy-MT2 是翻译专用模型，指令遵循一般（RESEARCH §6）：提示词短、指令单一，
  * 不要附加解释或格式要求。
  */
-function ollamaMessages(text: string, target: string): Array<{ role: string; content: string }> {
+function translationMessages(text: string, target: string): Array<{ role: string; content: string }> {
   return [
     {
       role: 'system',
@@ -158,13 +169,129 @@ const runtimeReady = new Set<string>()
 let runtimeStarting: Promise<unknown> | undefined
 
 /**
+ * llama-server 的拉起计划；找不到二进制/模型时返回 undefined（不拉起）。
+ * `--jinja` 用模型自带的 chat 模板，`--no-webui` 关掉它自带的网页界面。
+ */
+function llamaPlan(config: CotConfig['llamacpp']): LaunchPlan | undefined {
+  const bin = config.bin !== '' ? config.bin : defaultLlamaServerBin()
+  const model = config.modelPath !== '' ? config.modelPath : defaultModelPath()
+  if (bin === undefined || model === undefined) return undefined
+  return {
+    bin,
+    args: [
+      '-m',
+      model,
+      '--host',
+      hostOf(config.baseURL),
+      '--port',
+      portOf(config.baseURL),
+      '-c',
+      String(config.ctxSize),
+      '-ngl',
+      String(config.gpuLayers),
+      '--jinja',
+      '--no-webui',
+    ],
+  }
+}
+
+/** llama.cpp 本地 provider（llama-server，OpenAI 兼容接口）。 */
+export function createLlamaCppProvider(
+  config: CotConfig['llamacpp'],
+  runtimeDeps?: RuntimeDeps,
+): TranslateProvider {
+  const base = config.baseURL
+  const loadModelPlan = () => {
+    // 每次调用都重新找一遍：用户可能刚把模型/二进制放进来。
+    const plan = llamaPlan(config)
+    return plan
+  }
+  /** 当前实际会用的模型名（配置优先，其次 `~/models` 里发现的）。 */
+  const currentModel = () => {
+    if (config.modelPath !== '') return modelLabel(config.modelPath)
+    const discovered = defaultModelPath()
+    return discovered === undefined ? 'auto-detect' : modelLabel(discovered)
+  }
+  return {
+    id: 'llamacpp',
+    kind: 'llamacpp',
+    label: '本地 Hy-MT2（llama.cpp）',
+    model: currentModel(),
+    async translate(segments, target, signal, fetchImpl) {
+      if (config.autostart) {
+        try {
+          await ensureLocalServer({
+            baseURL: base,
+            probePath: '/health',
+            fetchImpl,
+            plan: loadModelPlan,
+            ...(runtimeDeps === undefined ? {} : { deps: runtimeDeps }),
+          })
+        } catch {
+          // 拉起失败交给下面的请求失败 → 链降级。
+        }
+      }
+      const out: string[] = []
+      for (const text of segments) {
+        const response = await fetchImpl(`${base}/v1/chat/completions`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            model: 'local',
+            messages: translationMessages(text, target),
+            temperature: HY_MT2_OPTIONS.temperature,
+            top_p: HY_MT2_OPTIONS.top_p,
+            top_k: HY_MT2_OPTIONS.top_k,
+            repeat_penalty: HY_MT2_OPTIONS.repeat_penalty,
+            max_tokens: numPredictFor(text),
+            stream: false,
+          }),
+          signal,
+        })
+        if (!response.ok) throw new Error(`llamacpp: HTTP ${response.status}`)
+        const payload = (await response.json()) as {
+          choices?: Array<{ message?: { content?: unknown } }>
+        }
+        const content = payload.choices?.[0]?.message?.content
+        if (typeof content !== 'string') throw new Error('llamacpp: malformed response')
+        out.push(stripWrapping(content))
+      }
+      return out
+    },
+    async probe(signal, fetchImpl) {
+      try {
+        const response = await fetchImpl(`${base}/health`, { signal })
+        if (response.ok) {
+          return { available: true, detail: `model: ${currentModel()}` }
+        }
+        // 老版本 llama-server 没有 /health：退一步看 /v1/models。
+        const models = await fetchImpl(`${base}/v1/models`, { signal })
+        return models.ok
+          ? { available: true, detail: `model: ${currentModel()}` }
+          : { available: false, detail: `HTTP ${response.status}` }
+      } catch (error) {
+        return { available: false, detail: messageOf(error) }
+      }
+    },
+    async listModels(signal, fetchImpl) {
+      const response = await fetchImpl(`${base}/v1/models`, { signal })
+      if (!response.ok) throw new Error(`llamacpp: HTTP ${response.status}`)
+      const payload = (await response.json()) as { data?: Array<{ id?: unknown }> }
+      return (payload.data ?? [])
+        .map((model) => (typeof model.id === 'string' ? model.id : ''))
+        .filter((id) => id !== '')
+    },
+  }
+}
+
+/**
  * 确保本地服务在跑：按需拉起 `ollama serve`（headless）。
  * 用模块级 promise 去重，多个并发请求只拉一次。
  */
 async function ensureRuntimeOnce(
   config: CotConfig['ollama'],
   fetchImpl: FetchLike,
-  deps: OllamaRuntimeDeps | undefined,
+  deps: RuntimeDeps | undefined,
 ): Promise<void> {
   const key = `${config.baseURL}|${config.bin}`
   if (runtimeReady.has(key)) return
@@ -188,16 +315,16 @@ async function ensureRuntimeOnce(
   await runtimeStarting
 }
 
-/** Ollama 本地 provider。 */
+/** Ollama 本地 provider（可选；默认配置里已禁用，本机没装 Ollama）。 */
 export function createOllamaProvider(
   config: CotConfig['ollama'],
-  runtimeDeps?: OllamaRuntimeDeps,
+  runtimeDeps?: RuntimeDeps,
 ): TranslateProvider {
   const base = config.baseURL
   return {
     id: 'ollama',
     kind: 'ollama',
-    label: '本地 Hy-MT2',
+    label: '本地 Hy-MT2（Ollama）',
     model: config.model,
     async translate(segments, target, signal, fetchImpl) {
       // 服务没起来时先按需拉起（无 GUI 的后台进程），再翻译。
@@ -214,7 +341,7 @@ export function createOllamaProvider(
       for (const text of segments) {
         const body: Record<string, unknown> = {
           model,
-          messages: ollamaMessages(text, target),
+          messages: translationMessages(text, target),
           stream: false,
           options: { ...HY_MT2_OPTIONS, num_predict: numPredictFor(text) },
         }

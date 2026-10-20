@@ -35,11 +35,12 @@
 **验收**：展开任意 Think 行 → 出现双栏对照；鼠标移到某段，左右两边同时高亮；代码/路径/链接保持原样；
 翻译不可用时右栏提示、左栏仍可读；折叠后恢复成原来的纯文本。
 
-## M2 host 翻译接口 + 本地 Ollama provider ✅（2026-10-19，代码与测试完成）
+## M2 host 翻译接口 + 本地 provider（llama.cpp / Ollama）✅（2026-10-19，代码与测试完成）
 
 - ✅ `POST /_cotx/translate`：入参校验（≤64 段 / ≤4000 字/段 / ≤16000 字总量 / 64KB body）、
   单 provider 超时、LRU 600、30 秒负缓存、fail-open（全挂 → 空译文 + 200，不 5xx）
-- ✅ `ollama` 适配器：`/api/chat`，`kaelri/hy-mt2:7b-q4_K_M`，官方采样参数，可选 `keep_alive`
+- ✅ `llamacpp` 适配器：OpenAI 兼容 `/v1/chat/completions`，按需拉起 llama-server（`--jinja --no-webui`）
+- ✅ `ollama` 适配器（可选）：`/api/chat`，`model: auto` 自动挑已拉取模型，可选 `keep_alive`
 - ✅ `GET /_cotx/providers`（链 + 各档可用性，探测 `/api/tags`）、`GET /_cotx/models`
 - ✅ `google` 免费接口兜底（可在配置里关掉）
 - ✅ trust fence：`connection.requestRejection`，同源/本机之外的请求直接拒
@@ -48,15 +49,18 @@
 
 **验收方式**：`npm test`（37 项全绿）。真机验证要等重启桌面端后 `curl 127.0.0.1:<port>/_cotx/providers`。
 
-### M2 附：本地模型就绪 ✅（2026-10-19 晚，本机实测）
+### M2 附：本地模型就绪 ✅（2026-10-20，本机实测）
 
-- ✅ 安装 headless Ollama 0.40.5（只用命令行，托盘/自启已移除，见 ADR-015）
-- ✅ `kaelri/hy-mt2:1.8b-q4_K_M`（1.1GB）拉取完成，100% GPU 1.5GB
-- ✅ 实测：冷启动 2.18s、热调用 67–350ms；插件停服后自动拉起 + 翻译 7.08s
-- ✅ `model: auto` 自动选已拉取模型（7B Q4 优先），`ollama.autostart`/`bin` 可配置
-- ✅ 译文质量抽检：直译流畅，行内代码原样保留（见 RESEARCH §9）
-- ⬜ 7B Q4（4.5GB）未拉取；需要时 `ollama pull` 即可，代码不用改
-
+- ✅ 卸载 Ollama（安装器 + 托盘 GUI，用户不要）；改用 **llama.cpp `llama-server`**
+  （官方 release 压缩包，**免安装、无注册表、无托盘、无开机自启**，见 ADR-017）
+- ✅ 运行时：llama.cpp b11750 win-vulkan-x64（35MB zip），解压到 `~/tools/llama.cpp`
+- ✅ 模型：`tencent/Hy-MT2-1.8B-GGUF` Q4_K_M（1080.6MB），放 `~/models`
+- ✅ 插件按需拉起 `llama-server`（`-ngl 99 --jinja --no-webui`），实测：停服后
+  拉起 + 加载 + 翻译 **1.66s**；热调用 **50ms/段**；显存约 1.5GB
+- ✅ 走 OpenAI 兼容 `/v1/chat/completions`，探活 `/health`；模型自动发现（`~/models` 里
+  优先 hy-mt2 + Q4_K_M）
+- ✅ Ollama provider 保留但默认禁用（`ollama.enabled: false`），老配置仍可用
+- ⬜ 7B Q4（约 4.5GB）未下载；放进去即可自动被选，无需改代码
 ## M3 client 翻译流水线 🟡（核心已可用，实时增量未做）
 
 - ✅ 剔除器：围栏/行内代码、URL、Windows/POSIX 路径、`fn()` 调用 —— **分段保留**而非占位符，

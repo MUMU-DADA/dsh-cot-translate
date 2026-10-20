@@ -8,7 +8,13 @@
  * - 健康状态里不含密钥、不含原文。
  */
 
-export type ProviderKind = 'ollama' | 'openai' | 'anthropic' | 'google' | 'bing'
+export type ProviderKind =
+  | 'llamacpp'
+  | 'ollama'
+  | 'openai'
+  | 'anthropic'
+  | 'google'
+  | 'bing'
 
 export interface ProviderInfo {
   /** 稳定 id，用于配置里排序/开关，例如 "local-7b" */

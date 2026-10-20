@@ -241,6 +241,10 @@
 - 首次翻译要等拉起服务 + 加载模型：实测 1.8B 冷启动约 2–7 秒（含进程拉起轮询），热调用 67–350ms。
 - 进程由插件发起，日志会记一行拉起结果（不含原文）。
 
+> **2026-10-20 修订：具体运行时已换成 llama.cpp（ADR-017）**，因为用户要求卸载 Ollama。
+> 本 ADR 的原则（只用 headless 命令行服务、不装 GUI、插件按需拉起、`model auto`）全部保留；
+> Ollama 相关代码保留但默认禁用（`ollama.enabled: false`）。
+
 ## ADR-016 不把翻译模型打包进插件
 
 **背景**：用户提出「如果不大的话可以放在插件里面」。
@@ -265,12 +269,46 @@
 
 ---
 
+## ADR-017 本地运行时改用 llama.cpp 的 llama-server（单文件、无安装器、无 GUI）
+
+**背景**：用户明确「不要用 GUI 软件」，随后要求把 Ollama 卸载。Ollama 的 Windows 分发是
+安装器 + 托盘应用，卸载后本地翻译就没有运行时了。
+
+**决策**：
+
+- 运行时换成 **llama.cpp 的 `llama-server.exe`**（官方 Windows release 压缩包，免安装：
+  解压即用、不写注册表、没有托盘、没有开机自启、删目录即卸载）；
+- 用 **Vulkan** 构建（35MB zip / 解压 99MB），不装 632MB 的 CUDA 运行时；10GB 级 NVIDIA 独显 上
+  Vulkan 后端实测够快（见 RESEARCH §9）；
+- 模型用腾讯官方 GGUF：`tencent/Hy-MT2-1.8B-GGUF` 的 `Hy-MT2-1.8B-Q4_K_M.gguf`（1080.6MB）；
+- 插件通过 OpenAI 兼容接口 `POST {baseURL}/v1/chat/completions` 调用，`/health` 探活；
+- 服务没起来时插件按需拉起（`-m <gguf> --host --port -c -ngl --jinja --no-webui`），
+  detached、无窗口，DSH 退出不杀；
+- 默认发现路径：二进制 `~/tools/llama.cpp/llama-server.exe`，模型 `~/models/*.gguf`；
+  都可用 `llamacpp.bin` / `llamacpp.modelPath` 覆盖；
+- Ollama provider 保留但默认禁用（`ollama.enabled: false`），老用户仍可改配置启用。
+
+**备选与放弃原因**
+
+- 继续用 Ollama：用户明确要求卸载。
+- CUDA 构建：多 632MB 运行时下载，收益只有一点速度；Vulkan 已够（热调用 50ms/段）。
+- 模型内置（transformers.js + ONNX）：ADR-016 已论证质量与体积不划算。
+
+**后果**
+
+- 系统里没有安装器产物、没有常驻服务、没有托盘；只有 `~/tools/llama.cpp` 与 `~/models` 两个目录。
+- 首次使用要下载 ~1.1GB 模型 + 35MB 二进制（用户手动放好；插件不改网络策略）。
+- 端口：llama-server 默认 9931，本项目显式 `--port 8080`（与默认 baseURL 一致）。
+- 模型自带 chat 模板（`<｜hy_User｜>` 等），`--jinja` 直接用它，不需要自己拼提示词模板。
+
+---
+
 ## 开放问题
 
 1. ~~**内联渲染是否可行**~~ → 已答：不可行（keyed + 替换语义），见 ADR-011；最终用 DOM 注入，见 ADR-014。
 2. ~~**ChatNodeStore / turnDataSource 的公开 API 形状**~~ → 已答：`turnDataSource(turn, kind) => { getSnapshot, subscribe }`，含隐藏节点，见 RESEARCH §3.3。
 3. ~~**实时形态（M1b）**~~ → 已答：展开思考时就地注入双语面板，见 ADR-014。
-4. ~~**默认本地推理后端**~~ → 已答：headless `ollama serve` + 插件按需拉起，模型 `auto` 自动选择，见 ADR-015。
+4. ~~**默认本地推理后端**~~ → 已答：llama.cpp 的 `llama-server`（单文件、无 GUI），插件按需拉起，见 ADR-015 / ADR-017。
 5. ~~**模型是否打包进插件**~~ → 已答：不打包，见 ADR-016。
 6. **是否支持远程 provider 作为中间档**：例如本机局域网内的聚合 API 网关里挑便宜模型，作为本地不可用时的第二档（`openai` 兼容适配器）。
 7. **许可证**：暂定 MIT（与参考项目一致），发布前确认。

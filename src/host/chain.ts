@@ -13,8 +13,8 @@ import type { ProviderState, TranslateResponse } from '../shared'
 import { LruCache, NegativeCache, cacheKey } from './cache'
 import type { CotConfig } from './config'
 import type { FetchLike, TranslateProvider } from './providers'
-import { createGoogleProvider, createOllamaProvider } from './providers'
-import type { OllamaRuntimeDeps } from './runtime'
+import { createGoogleProvider, createLlamaCppProvider, createOllamaProvider } from './providers'
+import type { RuntimeDeps } from './runtime'
 
 /** 探测 provider 可用性时给的短超时。 */
 const PROBE_TIMEOUT_MS = 1500
@@ -28,7 +28,7 @@ export interface TranslatorDeps {
   /** 单测注入时钟，用于负缓存 TTL。 */
   now?: () => number
   /** 本地服务自启的可注入依赖（测试用）。 */
-  ollamaRuntime?: OllamaRuntimeDeps
+  localRuntime?: RuntimeDeps
 }
 
 /** 单个 provider 一次请求的超时信号（Node 18+ 自带 AbortSignal.timeout）。 */
@@ -43,13 +43,13 @@ export class Translator {
   private readonly config: CotConfig
   private readonly fetchImpl: FetchLike | undefined
   private readonly log: ((message: string) => void) | undefined
-  private readonly ollamaRuntime: OllamaRuntimeDeps | undefined
+  private readonly localRuntime: RuntimeDeps | undefined
 
   constructor(deps: TranslatorDeps) {
     this.config = deps.config
     this.fetchImpl = deps.fetchImpl
     this.log = deps.log
-    this.ollamaRuntime = deps.ollamaRuntime
+    this.localRuntime = deps.localRuntime
     this.cache = new LruCache<string>(deps.config.cacheSize)
     this.negative = new NegativeCache(deps.config.negativeTtlMs, 200, deps.now)
   }
@@ -57,11 +57,13 @@ export class Translator {
   /** 当前生效的 provider 列表（按 chain 顺序，跳过被禁用的）。 */
   providers(): TranslateProvider[] {
     const all: Record<string, TranslateProvider> = {
-      ollama: createOllamaProvider(this.config.ollama, this.ollamaRuntime),
+      llamacpp: createLlamaCppProvider(this.config.llamacpp, this.localRuntime),
+      ollama: createOllamaProvider(this.config.ollama, this.localRuntime),
       google: createGoogleProvider(this.config.google),
     }
     const selected: TranslateProvider[] = []
     for (const id of this.config.chain) {
+      if (id === 'llamacpp' && !this.config.llamacpp.enabled) continue
       if (id === 'ollama' && !this.config.ollama.enabled) continue
       if (id === 'google' && !this.config.google.enabled) continue
       const provider = all[id]

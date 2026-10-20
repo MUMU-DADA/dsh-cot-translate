@@ -23,7 +23,7 @@
 │ 剔除代码/路径/URL             │ ─────────────▶ │   GET  /_cotx/providers         │
 │ 段落→句子分批                 │                │   GET  /_cotx/models            │
 │ 渲染译文（内联/浮层/尾部）    │ ◀───────────── │ provider 链（用户可排序）       │
-│ 设置页 / localStorage 缓存    │  translations  │  1) 本地 Ollama（Hy-MT2）       │
+│ 设置页 / localStorage 缓存    │  translations  │  1) 本地 llama.cpp（Hy-MT2）    │
 └──────────────────────────────┘                │  2) OpenAI 兼容端点（可选）     │
                                                  │  3) 免费 Google / Bing          │
                                                  │ LRU 缓存 + 30s 负缓存 + 超时    │
@@ -37,22 +37,25 @@
 - **路由**（exact，同源）
   - `POST /_cotx/translate` `{ target?, segments }` → `{ translations, provider }`
   - `GET /_cotx/providers` → 当前链与各自可用性（不含密钥、不含原文）
-  - `GET /_cotx/models` → 本地 Ollama 模型列表
+  - `GET /_cotx/models` → 本地模型列表（llama.cpp `/v1/models` 或 Ollama `/api/tags`）
 - **请求边界**：`connection.requestRejection` 做 trust fence；body ≤ 64KB；段数 1..64；
   单段 ≤ 4000 字符；单批 ≤ 16000 字符；空段/非字符串/坏 JSON 一律 400。
 - **provider 统一接口**（`src/host/providers.ts`）
   - `translate(segments, target, signal, fetch) => string[]`：逐段翻译，段数与输入必须等长；
   - `probe(signal, fetch)`：可用性探测；`listModels?`：可选。
-  - `ollama`：`POST {baseURL}/api/chat`，`stream: false`，模型名默认 `auto`
-    （从 `/api/tags` 里按偏好挑已拉取的）；采样参数按官方建议
-    （temp 0.7 / top_p 0.6 / top_k 20 / repeat_penalty 1.05）；可选 `keep_alive`；
-    服务未启动时按需拉起 `ollama serve`（headless，`ollama.autostart` 可关）。
+  - `llamacpp`（默认）：`POST {baseURL}/v1/chat/completions`（llama-server 的 OpenAI 兼容接口），
+    探活 `/health`；服务未启动时按需拉起
+    `llama-server -m <gguf> --host --port -c -ngl --jinja --no-webui`（免安装、无 GUI，`llamacpp.autostart` 可关）；
+    模型从 `~/models/*.gguf` 自动发现（优先 hy-mt2 + Q4_K_M）。
+  - `ollama`（可选，默认禁用）：`POST {baseURL}/api/chat`，模型名 `auto` 从 `/api/tags` 挑；
+    采样参数按官方建议（temp 0.7 / top_p 0.6 / top_k 20 / repeat_penalty 1.05）。
   - `google`：`translate_a/single` 免费接口，最后兜底，可配置关闭。
   - `openai` / `anthropic`：暂未实现（M4 之后按需）。
 - **配置**（`src/host/config.ts` 纯函数归一化，不引入 schemastery，见 ADR-012）
   - `enabled`、`target`（默认 `zh-Hans`）、`timeoutMs`、`cacheSize`、`negativeTtlMs`
-  - `chain`：provider id 顺序（默认 `['ollama','google']`）
-  - `ollama.{baseURL,model,keepAlive,enabled}`、`google.{endpoint,enabled}`
+  - `chain`：provider id 顺序（默认 `['llamacpp','google']`；可插入 `ollama`）
+  - `llamacpp.{baseURL,bin,modelPath,gpuLayers,ctxSize,autostart,enabled}`
+  - `ollama.{baseURL,model,keepAlive,autostart,bin,enabled}`（可选）、`google.{endpoint,enabled}`
   - 写错的值一律回退默认，插件不会因配置语法挂不上
 - **缓存**
   - LRU ≈ 600 条：`hash(target + text) → translation`（进程内，不落盘）

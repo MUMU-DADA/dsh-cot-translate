@@ -8,10 +8,26 @@
  */
 
 /** 已知的 provider id（链里出现别的 id 会被忽略）。 */
-export const PROVIDER_IDS = ['ollama', 'google'] as const
+export const PROVIDER_IDS = ['llamacpp', 'ollama', 'google'] as const
 
 /** provider id 联合。 */
 export type ProviderId = (typeof PROVIDER_IDS)[number]
+
+export interface LlamaCppConfig {
+  enabled: boolean
+  /** llama-server 的地址；默认 127.0.0.1:8080。 */
+  baseURL: string
+  /** llama-server 可执行文件；空串 = 自动在常见位置找。 */
+  bin: string
+  /** GGUF 模型路径；空串 = 在 `~/models` 里找。 */
+  modelPath: string
+  /** 卸载到 GPU 的层数（99 = 全部）。 */
+  gpuLayers: number
+  /** 上下文窗口。 */
+  ctxSize: number
+  /** 连不上时是否拉起 llama-server。 */
+  autostart: boolean
+}
 
 export interface OllamaConfig {
   enabled: boolean
@@ -44,6 +60,7 @@ export interface CotConfig {
   negativeTtlMs: number
   /** provider 尝试顺序。 */
   chain: ProviderId[]
+  llamacpp: LlamaCppConfig
   ollama: OllamaConfig
   google: GoogleConfig
 }
@@ -57,13 +74,22 @@ const DEFAULT_GOOGLE_ENDPOINT = 'https://translate.googleapis.com/translate_a/si
 export const DEFAULT_CONFIG: CotConfig = {
   enabled: true,
   target: 'zh-Hans',
-  // 首次调用要等模型从磁盘加载进显存（1.8B 约 1-2s，7B 约 3-5s），给足余量。
+  // 首次调用要等模型从磁盘加载进显存（1.8B 约 2-5s，7B 约 5-10s），给足余量。
   timeoutMs: 20000,
   cacheSize: 600,
   negativeTtlMs: 30000,
-  chain: ['ollama', 'google'],
-  ollama: {
+  chain: ['llamacpp', 'google'],
+  llamacpp: {
     enabled: true,
+    baseURL: 'http://127.0.0.1:8080',
+    bin: '',
+    modelPath: '',
+    gpuLayers: 99,
+    ctxSize: 4096,
+    autostart: true,
+  },
+  ollama: {
+    enabled: false,
     baseURL: DEFAULT_OLLAMA_BASE,
     // auto = 从 `/api/tags` 里按偏好挑一个已拉取的模型（见 providers.pickModel），
     // 用户拉的是 1.8B 还是 7B、量化档是什么都不影响插件工作。
@@ -122,8 +148,10 @@ export function normalizeConfig(raw: unknown): CotConfig {
   const root = objectOf(raw)
   const ollama = objectOf(root.ollama)
   const google = objectOf(root.google)
+  const llamacpp = objectOf(root.llamacpp)
 
   const baseURL = text(ollama.baseURL, DEFAULT_CONFIG.ollama.baseURL).replace(/\/+$/, '')
+  const llamaBaseURL = text(llamacpp.baseURL, DEFAULT_CONFIG.llamacpp.baseURL).replace(/\/+$/, '')
 
   return {
     enabled: flag(root.enabled, DEFAULT_CONFIG.enabled),
@@ -132,6 +160,15 @@ export function normalizeConfig(raw: unknown): CotConfig {
     cacheSize: clampInt(root.cacheSize, DEFAULT_CONFIG.cacheSize, 0, 5000),
     negativeTtlMs: clampInt(root.negativeTtlMs, DEFAULT_CONFIG.negativeTtlMs, 0, 300000),
     chain: chainOf(root.chain, DEFAULT_CONFIG.chain),
+    llamacpp: {
+      enabled: flag(llamacpp.enabled, DEFAULT_CONFIG.llamacpp.enabled),
+      baseURL: llamaBaseURL,
+      bin: typeof llamacpp.bin === 'string' ? llamacpp.bin.trim() : '',
+      modelPath: typeof llamacpp.modelPath === 'string' ? llamacpp.modelPath.trim() : '',
+      gpuLayers: clampInt(llamacpp.gpuLayers, DEFAULT_CONFIG.llamacpp.gpuLayers, 0, 999),
+      ctxSize: clampInt(llamacpp.ctxSize, DEFAULT_CONFIG.llamacpp.ctxSize, 512, 32768),
+      autostart: flag(llamacpp.autostart, DEFAULT_CONFIG.llamacpp.autostart),
+    },
     ollama: {
       enabled: flag(ollama.enabled, DEFAULT_CONFIG.ollama.enabled),
       baseURL,

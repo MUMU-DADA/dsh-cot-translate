@@ -77,7 +77,7 @@ test('end-to-end：本地 provider 翻译 → providers 健康 → models', asyn
     get: () => undefined,
   }
   host.apply(ctx, {
-    ollama: { baseURL: ollama.url, model },
+    ollama: { enabled: true, baseURL: ollama.url, model },
     chain: ['ollama'],
   })
 
@@ -138,7 +138,7 @@ test('end-to-end：provider 全挂时 200 + 空译文（fail-open）', async (co
   }
   // 指向一个必然连不上的端口，且关掉 google 兜底与本地服务自启。
   host.apply(ctx, {
-    ollama: { baseURL: 'http://127.0.0.1:1', model: 'none', autostart: false },
+    ollama: { enabled: true, baseURL: 'http://127.0.0.1:1', model: 'none', autostart: false },
     google: { enabled: false },
     chain: ['ollama', 'google'],
     timeoutMs: 1000,

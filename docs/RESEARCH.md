@@ -174,31 +174,46 @@ Ollama 现成标签（已核实）：
 
 ---
 
-## 9. 本地模型实测（2026-10-19 晚，本机）
+## 9. 本地模型实测（2026-10-20，本机）
 
-**安装形态**：Ollama 0.40.5（winget 安装包），但**只用命令行** `ollama.exe serve`；
-安装包自带的托盘应用自启已移除（ADR-015），实测进程列表里只有 `ollama.exe`。
+**安装形态**：不再用 Ollama（已卸载：安装器 + 托盘应用，用户不要 GUI 软件）。
+改为 **llama.cpp 的 `llama-server.exe`**（官方 release 压缩包，免安装）：
 
-| 项 | 实测值 |
+| 项 | 值 |
 |---|---|
-| 模型 | `kaelri/hy-mt2:1.8b-q4_K_M`，1.1 GB |
-| 加载后显存 | 1.5 GB，**100% GPU**（10GB 级 NVIDIA 独显） |
-| 冷启动（卸载后首次） | 2.18 s |
-| 热调用（单段 ≤100 字符） | 67 ms / 350 ms（两段不同文本） |
-| 首次下载后第一次调用 | 46.8 s（1.1GB blob 刚落到磁盘，页缓存冷 + Defender 实时扫描；之后就正常了） |
-| 空载卸载 | `OLLAMA_KEEP_ALIVE=5m` 生效，`ollama ps` 显示 4 分钟后卸载 |
-| 插件拉起服务 | 服务停掉后一次 `translate()`：拉起 + 就绪 + 加载 + 翻译共 7.08 s |
+| 运行时 | llama.cpp `b11750`，**win-vulkan-x64** 构建（zip 35MB / 解压 98.6MB） |
+| 位置 | `%USERPROFILE%\tools\llama.cpp\`（解压即用，无注册表、无托盘、无自启） |
+| 模型 | `tencent/Hy-MT2-1.8B-GGUF` 的 `Hy-MT2-1.8B-Q4_K_M.gguf`，1080.6MB |
+| 模型位置 | `%USERPROFILE%\models\` |
+| 启动参数 | `-m <gguf> --host 127.0.0.1 --port 8080 -c 4096 -ngl 99 --jinja --no-webui` |
+| 显存 | 约 1.5GB（含 DSH 共 3.6GB / 10.2GB） |
+| 接口 | OpenAI 兼容 `POST /v1/chat/completions`；探活 `GET /health` |
+| chat 模板 | 模型自带 jinja 模板（`<｜hy_User｜>` / `<｜hy_Assistant｜>`），`--jinja` 直接生效 |
 
-**译文质量（1.8B Q4，直译风格）**：
+**延迟实测**：
+
+| 场景 | 值 |
+|---|---|
+| 热调用（单段 ≤100 字符） | **50 ms** |
+| 3 段 / 223 字符（服务已加载，首次请求） | 2179 ms（含 Vulkan 管线初始化） |
+| 插件拉起服务 + 加载 + 翻译（服务停掉后） | **1661 ms** |
+
+**译文质量（1.8B Q4_K_M）**：
 
 | 原文 | 译文 |
 |---|---|
 | I should check the repository layout first, then look at the docs before editing anything. | 我应该先检查仓库结构，然后查看文档，再编辑任何内容。 |
 | The failing test is caused by a stale lockfile, so regenerating it should fix the issue. | 失败的测试是由过期的锁文件引起的，重新生成它应该可以解决问题。 |
-| Run \`npm test\` before touching the host half. | 在接触主机之前运行 \`npm test\`。 |
+| Run `npm test` before touching the host half. | 在接触主机之前运行 `npm test`。 |
 
 观察：流畅、术语基本正确，`host half` 这类自造词会被直译（可接受）；
 行内代码被完整保留（剔除器的分段保留生效）。
 
-**备选量化档**：7B Q4_K_M 约 4.5 GB，显存 4.5 GB、质量更好、延迟约 3–5 倍；
-`auto` 模式会优先选它（ADR-015），需要时 `ollama pull kaelri/hy-mt2:7b-q4_K_M` 即可，不用改代码。
+**坑**
+
+- `llama-server` 默认端口是 **9931**，不是 8080；默认还会起自带 Web UI，无 GUI 需求下必须加 `--no-webui`。
+- Vulkan 构建不需要 CUDA 运行时（比 CUDA 构建省 632MB 下载），10GB 级 NVIDIA 独显 实测够快。
+- 首次把 1GB 模型从磁盘读进来可能要几十秒（页缓存冷 + Defender 实时扫描），之后就正常。
+
+**换更大模型**：`tencent/Hy-MT2-7B-GGUF` 的 Q4_K_M 约 4.5GB，放 `~/models` 即可，
+插件按文件名偏好（hy-mt2 → Q4_K_M）自动选，不用改代码。

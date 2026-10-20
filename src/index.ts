@@ -94,9 +94,16 @@ export function apply(ctx: HostContext, rawConfig?: unknown): void {
 export { LruCache, NegativeCache, cacheKey } from './host/cache'
 export { Translator } from './host/chain'
 export { DEFAULT_CONFIG, PROVIDER_IDS, normalizeConfig } from './host/config'
-export type { CotConfig, GoogleConfig, OllamaConfig, ProviderId } from './host/config'
+export type {
+  CotConfig,
+  GoogleConfig,
+  LlamaCppConfig,
+  OllamaConfig,
+  ProviderId,
+} from './host/config'
 export {
   createGoogleProvider,
+  createLlamaCppProvider,
   createOllamaProvider,
   parseGooglePayload,
   pickModel,
@@ -114,5 +121,12 @@ export {
   sendJson,
   sendMethodNotAllowed,
 } from './host/routes'
-export { defaultOllamaBin, ensureOllamaServer } from './host/runtime'
-export type { EnsureResult, OllamaRuntimeDeps } from './host/runtime'
+export {
+  defaultLlamaServerBin,
+  defaultModelPath,
+  defaultOllamaBin,
+  ensureLocalServer,
+  ensureOllamaServer,
+  modelLabel,
+} from './host/runtime'
+export type { EnsureResult, LaunchPlan, RuntimeDeps } from './host/runtime'

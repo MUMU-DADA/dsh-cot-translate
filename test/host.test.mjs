@@ -63,7 +63,7 @@ const OLLAMA_OK = { message: { content: '  中文译文  ' } }
 test('normalizeConfig 兜底、夹取与去重', () => {
   const defaults = host.normalizeConfig(undefined)
   assert.equal(defaults.target, 'zh-Hans')
-  assert.deepEqual(defaults.chain, ['ollama', 'google'])
+  assert.deepEqual(defaults.chain, ['llamacpp', 'google'])
   assert.equal(defaults.ollama.baseURL, 'http://127.0.0.1:11434')
 
   const custom = host.normalizeConfig({
@@ -71,7 +71,7 @@ test('normalizeConfig 兜底、夹取与去重', () => {
     cacheSize: -5,
     negativeTtlMs: 10 ** 9,
     chain: ['google', 'google', 'bogus'],
-    ollama: { baseURL: 'http://10.0.0.2:11434///', model: 'x/y:1b' },
+    ollama: { enabled: true, baseURL: 'http://10.0.0.2:11434///', model: 'x/y:1b' },
   })
   assert.equal(custom.timeoutMs, 500, '过小超时被夹到 500ms')
   assert.equal(custom.cacheSize, 0, '负容量夹到 0')
@@ -110,7 +110,7 @@ test('译文字符串清洗：去引号与“译文：”前缀', () => {
 test('ollama 适配器：请求体、keep_alive 与采样参数', async () => {
   const fetchImpl = fakeFetch(() => jsonResponse(OLLAMA_OK))
   const provider = host.createOllamaProvider(
-    host.normalizeConfig({ ollama: { model: 'kaelri/hy-mt2:7b-q4_K_M', keepAlive: '5m', autostart: false } }).ollama,
+    host.normalizeConfig({ ollama: { enabled: true, model: 'kaelri/hy-mt2:7b-q4_K_M', keepAlive: '5m', autostart: false } }).ollama,
   )
   const out = await provider.translate(['Think step one.'], 'zh-Hans', AbortSignal.timeout(1000), fetchImpl)
 
@@ -155,7 +155,7 @@ test('model=auto：先查 /api/tags 选模型，标签缓存 60 秒', async () =
   })
   const provider = host.createOllamaProvider(
     host.normalizeConfig({
-      ollama: { model: 'auto', baseURL: 'http://fake:1', autostart: false },
+      ollama: { enabled: true, model: 'auto', baseURL: 'http://fake:1', autostart: false },
     }).ollama,
   )
   // 换一个 baseURL，避开其它用例写进模块级标签缓存的条目。
@@ -171,7 +171,7 @@ test('model=auto：先查 /api/tags 选模型，标签缓存 60 秒', async () =
 test('probe 在 auto 模式下报出实际选中的模型', async () => {
   const fetchImpl = fakeFetch(() => jsonResponse({ models: [{ name: 'kaelri/hy-mt2:7b-q4_K_M' }] }))
   const provider = host.createOllamaProvider(
-    host.normalizeConfig({ ollama: { model: 'auto', baseURL: 'http://fake-probe:1' } }).ollama,
+    host.normalizeConfig({ ollama: { enabled: true, model: 'auto', baseURL: 'http://fake-probe:1' } }).ollama,
   )
   const probe = await provider.probe(AbortSignal.timeout(1000), fetchImpl)
   assert.equal(probe.available, true)
@@ -192,13 +192,13 @@ test('本地服务按需拉起：连不上时 spawn 一次并等就绪', async (
     return jsonResponse(OLLAMA_OK)
   })
   const config = host.normalizeConfig({
-    ollama: { model: 'auto', baseURL: 'http://autostart:1', autostart: true, bin: 'C:/fake/ollama.exe' },
+    ollama: { enabled: true, model: 'auto', baseURL: 'http://autostart:1', autostart: true, bin: 'C:/fake/ollama.exe' },
     chain: ['ollama'],
   })
   const translator = new host.Translator({
     config,
     fetchImpl,
-    ollamaRuntime: {
+    localRuntime: {
       launch: (bin) => launched.push(bin),
       sleep: async () => {},
       waitMs: 5000,
@@ -214,14 +214,14 @@ test('autostart=false 时不拉起进程', async () => {
   const launched = []
   const fetchImpl = fakeFetch(() => jsonResponse({}, 503))
   const config = host.normalizeConfig({
-    ollama: { model: 'auto', baseURL: 'http://no-autostart:1', autostart: false },
+    ollama: { enabled: true, model: 'auto', baseURL: 'http://no-autostart:1', autostart: false },
     chain: ['ollama'],
     google: { enabled: false },
   })
   const translator = new host.Translator({
     config,
     fetchImpl,
-    ollamaRuntime: { launch: (bin) => launched.push(bin), sleep: async () => {}, waitMs: 100 },
+    localRuntime: { launch: (bin) => launched.push(bin), sleep: async () => {}, waitMs: 100 },
   })
   const result = await translator.translate(['hello'])
   assert.deepEqual(result.translations, [''])
@@ -239,6 +239,107 @@ test('ensureOllamaServer：已就绪时不拉起', async () => {
   assert.deepEqual(launched, [])
 })
 
+test('llamacpp 适配器：OpenAI 兼容请求与响应', async () => {
+  let body
+  const fetchImpl = fakeFetch((_url, init) => {
+    body = JSON.parse(init.body)
+    return jsonResponse({ choices: [{ message: { content: '  本地译文  ' } }] })
+  })
+  const provider = host.createLlamaCppProvider(
+    host.normalizeConfig({
+      llamacpp: { baseURL: 'http://127.0.0.1:8081', autostart: false },
+    }).llamacpp,
+  )
+  const out = await provider.translate(
+    ['Check the repo layout.'],
+    'zh-Hans',
+    AbortSignal.timeout(1000),
+    fetchImpl,
+  )
+  assert.deepEqual(out, ['本地译文'])
+  assert.equal(fetchImpl.calls[0].url, 'http://127.0.0.1:8081/v1/chat/completions')
+  assert.equal(body.messages[0].role, 'system')
+  assert.match(body.messages[0].content, /Simplified Chinese/)
+  assert.equal(body.messages[1].content, 'Check the repo layout.')
+  assert.equal(body.temperature, 0.7)
+  assert.equal(body.top_k, 20)
+  assert.ok(body.max_tokens >= 128)
+})
+
+test('llamacpp probe：/health 失败时回退 /v1/models', async () => {
+  const healthy = host.createLlamaCppProvider(
+    host.normalizeConfig({ llamacpp: { baseURL: 'http://h1:1', autostart: false } }).llamacpp,
+  )
+  const healthyProbe = await healthy.probe(
+    AbortSignal.timeout(500),
+    fakeFetch(() => jsonResponse({ status: 'ok' })),
+  )
+  assert.equal(healthyProbe.available, true)
+  assert.match(healthyProbe.detail, /^model: /, '应报出当前会用的模型名')
+
+  const fallback = host.createLlamaCppProvider(
+    host.normalizeConfig({ llamacpp: { baseURL: 'http://h2:1', autostart: false } }).llamacpp,
+  )
+  const fetchImpl = fakeFetch((url) =>
+    url.endsWith('/health')
+      ? jsonResponse({}, 404)
+      : jsonResponse({ data: [{ id: 'local' }] }),
+  )
+  const probe = await fallback.probe(AbortSignal.timeout(500), fetchImpl)
+  assert.equal(probe.available, true)
+})
+
+test('llamacpp 自启：拉起参数带模型、端口与 GPU 层数', async () => {
+  const launched = []
+  let healthCalls = 0
+  const fetchImpl = fakeFetch((url) => {
+    if (url.endsWith('/health')) {
+      healthCalls += 1
+      return healthCalls <= 2 ? jsonResponse({}, 503) : jsonResponse({ status: 'ok' })
+    }
+    return jsonResponse({ choices: [{ message: { content: '译文' } }] })
+  })
+  const config = host.normalizeConfig({
+    chain: ['llamacpp'],
+    llamacpp: {
+      baseURL: 'http://127.0.0.1:18080',
+      bin: 'C:/fake/llama-server.exe',
+      modelPath: 'C:/fake/model.gguf',
+      gpuLayers: 42,
+      ctxSize: 2048,
+      autostart: true,
+    },
+  })
+  const translator = new host.Translator({
+    config,
+    fetchImpl,
+    localRuntime: {
+      launch: (bin, args) => launched.push({ bin, args }),
+      sleep: async () => {},
+      waitMs: 5000,
+    },
+  })
+  const result = await translator.translate(['hello'])
+  assert.deepEqual(result.translations, ['译文'])
+  assert.equal(launched.length, 1)
+  assert.equal(launched[0].bin, 'C:/fake/llama-server.exe')
+  const args = launched[0].args.join(' ')
+  assert.match(args, /-m C:\/fake\/model\.gguf/)
+  assert.match(args, /--port 18080/)
+  assert.match(args, /-ngl 42/)
+  assert.match(args, /-c 2048/)
+  assert.match(args, /--no-webui/)
+})
+
+test('modelPath 给定时 provider.model 用文件名', () => {
+  const provider = host.createLlamaCppProvider(
+    host.normalizeConfig({
+      llamacpp: { modelPath: 'C:/models/Hy-MT2-1.8B-Q4_K_M.gguf', autostart: false },
+    }).llamacpp,
+  )
+  assert.equal(provider.model, 'Hy-MT2-1.8B-Q4_K_M')
+})
+
 test('google 适配器：URL 参数与响应解析', async () => {
   const fetchImpl = fakeFetch(() => jsonResponse([[['你好', 'hello']]]))
   const provider = host.createGoogleProvider(host.normalizeConfig({}).google)
@@ -254,7 +355,7 @@ test('provider 链：第一个失败自动降级到下一个', async () => {
     return jsonResponse([[['兜底译文', 'hello']]])
   })
   const translator = new host.Translator({
-    config: host.normalizeConfig({ ollama: { model: 'kaelri/hy-mt2:7b-q4_K_M', autostart: false } }),
+    config: host.normalizeConfig({ chain: ['ollama', 'google'], llamacpp: { enabled: false, autostart: false }, ollama: { enabled: true, model: 'kaelri/hy-mt2:7b-q4_K_M', autostart: false } }),
     fetchImpl,
   })
   const result = await translator.translate(['hello'])
@@ -268,7 +369,7 @@ test('provider 链：全挂则 fail-open + 负缓存命中不再打模型', asyn
     calls += 1
     return jsonResponse({}, 500)
   })
-  const translator = new host.Translator({ config: host.normalizeConfig({ ollama: { autostart: false } }), fetchImpl })
+  const translator = new host.Translator({ config: host.normalizeConfig({ chain: ['ollama', 'google'], llamacpp: { enabled: false, autostart: false }, ollama: { enabled: true, autostart: false } }), fetchImpl })
 
   const first = await translator.translate(['hello'])
   assert.deepEqual(first.translations, [''])
@@ -284,7 +385,7 @@ test('provider 链：全挂则 fail-open + 负缓存命中不再打模型', asyn
 test('provider 链：缓存命中标记 provider=cache', async () => {
   const fetchImpl = fakeFetch(() => jsonResponse(OLLAMA_OK))
   const translator = new host.Translator({
-    config: host.normalizeConfig({ ollama: { model: 'kaelri/hy-mt2:7b-q4_K_M', autostart: false } }),
+    config: host.normalizeConfig({ chain: ['ollama', 'google'], llamacpp: { enabled: false, autostart: false }, ollama: { enabled: true, model: 'kaelri/hy-mt2:7b-q4_K_M', autostart: false } }),
     fetchImpl,
   })
   const first = await translator.translate(['hello'])
@@ -334,7 +435,7 @@ test('registerRoutes：POST 翻译成功 / 坏请求 400 / 方法 405 / trust fe
     return () => {}
   }
   const fetchImpl = fakeFetch(() => jsonResponse(OLLAMA_OK))
-  const config = host.normalizeConfig({ ollama: { model: 'kaelri/hy-mt2:7b-q4_K_M', autostart: false } })
+  const config = host.normalizeConfig({ chain: ['ollama', 'google'], llamacpp: { enabled: false, autostart: false }, ollama: { enabled: true, model: 'kaelri/hy-mt2:7b-q4_K_M', autostart: false } })
   const translator = new host.Translator({ config, fetchImpl })
   let guardReject = false
   host.registerRoutes({

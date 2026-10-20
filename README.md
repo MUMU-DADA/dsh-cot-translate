@@ -1,10 +1,10 @@
 # dsh-cot-translate
 
-在 DeepSeek Harness（DSH）Web 界面里，把模型的**思维链（reasoning / chain-of-thought）实时翻译成中文**的显示层插件，优先使用**本地模型**（Ollama / llama.cpp），全部失败时回退免费在线源。
+在 DeepSeek Harness（DSH）Web 界面里，把模型的**思维链（reasoning / chain-of-thought）实时翻译成中文**的显示层插件，优先使用**本地模型**（llama.cpp 的 llama-server，可选 Ollama），全部失败时回退免费在线源。
 
 > 状态：**M1b / M2 / M3 可用（待真机验收）** —— 展开思考块时**就地**显示双语对照：
 > 左栏原文、右栏中文译文，逐段成行，鼠标移到某段左右两边一起高亮；代码 / 路径 / 链接保持原样。
-> 本地 Ollama 优先，免费 Google 兜底，全失败显示原文。尚未做：设置页。详见 [docs/ROADMAP.md](docs/ROADMAP.md)。
+> 本地 llama.cpp 优先，免费 Google 兜底，全失败显示原文。尚未做：设置页。详见 [docs/ROADMAP.md](docs/ROADMAP.md)。
 > 目标运行时：DSH `0.2.0-rc.2` + cordis `4.0.4`（DSH Desktop 0.5.23 内置，实测读包版本）。
 
 ## 它要解决什么
@@ -56,7 +56,7 @@ dsh-cot-translate/
 │   ├── host/
 │   │   ├── config.ts         # 配置归一化（纯函数，不引 schemastery）
 │   │   ├── cache.ts          # LRU + 失败负缓存
-│   │   ├── providers.ts      # ollama / google 适配器 + 模型自动选择
+│   │   ├── providers.ts      # llamacpp / ollama / google 适配器 + 模型发现
 │   │   ├── runtime.ts        # 本地服务按需拉起（headless，无 GUI）
 │   │   ├── chain.ts          # provider 链编排、超时、fail-open
 │   │   └── routes.ts         # HTTP 路由：校验、状态码、trust fence
@@ -103,32 +103,37 @@ dsh plugin --profile web remove dsh-cot-translate
 
 ## 本地模型（可选，但推荐）
 
-插件**只调用命令行服务**，不依赖任何 GUI 应用：
+本地推理**不需要装 GUI 软件、不需要安装器**：用 llama.cpp 的免安装二进制 + 官方 GGUF。
 
 ```powershell
-# 1) 装 Ollama（只用它的命令行；托盘应用不用、已从开机自启移除）
-winget install --id Ollama.Ollama -e
+# 1) llama.cpp（Vulkan 构建，zip 35MB；解压即用，无注册表 / 托盘 / 开机自启）
+#    https://github.com/ggml-org/llama.cpp/releases → llama-b11750-bin-win-vulkan-x64.zip
+#    解压到 %USERPROFILE%\tools\llama.cpp\
 
-# 2) 拉一个 Hy-MT2（1.8B Q4 约 1.1GB，够快；想要更好质量可换 7B Q4 约 4.5GB）
-ollama pull kaelri/hy-mt2:1.8b-q4_K_M
-# ollama pull kaelri/hy-mt2:7b-q4_K_M
+# 2) 模型（腾讯官方 GGUF，Q4_K_M 约 1.08GB）
+curl -L -o "$env:USERPROFILE\models\Hy-MT2-1.8B-Q4_K_M.gguf" `
+  "https://huggingface.co/tencent/Hy-MT2-1.8B-GGUF/resolve/main/Hy-MT2-1.8B-Q4_K_M.gguf"
 ```
 
-**不用手动启动服务**：插件发现本地服务没在跑，会自动 `ollama serve`（headless、无窗口、
-无托盘），等它就绪后继续翻译；模型按 `keep_alive=5m` 空闲后自动卸载显存。
-插件也**不打包模型**（见 [ADR-016](docs/DECISIONS.md)）——模型放 `~/.ollama`，换模型不用重装插件。
+插件默认在这两个位置找：`~/tools/llama.cpp/llama-server.exe` 与 `~/models/*.gguf`
+（也支持 `llamacpp.bin` / `llamacpp.modelPath` 覆盖）。
 
-实测（10GB 级 NVIDIA 独显，1.8B Q4）：冷启动 2.2s、热调用 67–350ms；首次拉起服务 + 加载 + 翻译约 7s。
+**不用手动启动服务**：插件发现服务没跑，就会自动拉起 `llama-server`
+（detached、无窗口、`--no-webui` 关掉它自带的网页界面），加载完直接翻译；
+系统里没有常驻服务、没有托盘、没有开机自启，删目录即卸载。
+插件也**不打包模型**（见 [ADR-016](docs/DECISIONS.md)）——换模型只改 `~/models` 里的文件。
+
+实测（10GB 级 NVIDIA 独显，1.8B Q4_K_M）：热调用 **50ms/段**；服务停掉后插件拉起 + 加载 + 翻译 **1.66s**；
+显存约 1.5GB。想换 7B：把 `tencent/Hy-MT2-7B-GGUF` 的 Q4_K_M（约 4.5GB）放进去即可，代码不用改。
 
 没装本地模型时插件自动降级到免费 Google 接口；两者都不可用时显示原文（fail-open），
-界面不会报错。`GET /_cotx/providers` 可以看到每一档的实际可用性和当前选中的模型。
-
+界面不会报错。`GET /_cotx/providers` 可以看到每一档的实际可用性与当前模型名。
 ## 参考
 
 - 官方实验插件：`@deepseek-ai/dsh-experimental-client-ui-cot-translation`（peer 要求 0.2.1 运行时，当前不可用）
 - 第三方同类：`dsh-think-translate`（UncleK，MIT，0.2.0-rc.2 兼容；仅作参考阅读，不 fork）
 - 翻译模型：腾讯 **Hy-MT2**（Apache-2.0，33 语言）、Google **TranslateGemma**（Gemma 许可，55 语言）
-- 本地推理：Ollama / llama.cpp
+- 本地推理：llama.cpp（llama-server，免安装）/ Ollama（可选）
 
 ## License
 
